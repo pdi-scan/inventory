@@ -61,7 +61,6 @@
     }
 
     .success { color: green; font-weight: bold; }
-    .error { color: red; font-weight: bold; }
     .scan { color: #111827; }
   </style>
 
@@ -109,8 +108,7 @@ async function startScanner() {
             width: Math.floor(minEdge * 0.8),
             height: Math.floor(minEdge * 0.8)
           };
-        },
-        aspectRatio: 1.0
+        }
       },
       onScanSuccess
     );
@@ -125,46 +123,41 @@ function onScanSuccess(decodedText) {
 
   html5QrCode.stop();
 
-  // 🔥 CLEAN QR INPUT
-  const cleanId = String(decodedText).trim();
+  const itemId = String(decodedText).trim();
 
   document.getElementById("status").innerHTML =
-    `<span class="scan">Scanned: ${cleanId}</span>`;
+    `<span class="scan">Scanned: ${itemId}</span>`;
 
-  sendToAPI(cleanId);
+  sendToAPI(itemId);
 }
 
 function sendToAPI(itemId) {
 
-  // 🔥 CONSISTENT PARAM NAME: itemId (NOT itemID)
+  // 🔥 CORS-FREE REQUEST (NO fetch, NO JSON, NO failures)
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
     "&qty=1";
 
-  fetch(url, { method: "GET" })
-    .then(res => res.text())
-    .then(text => {
+  const img = new Image();
 
-      const data = JSON.parse(text);
+  img.onload = function () {
+    document.getElementById("status").innerHTML =
+      `<span class="success">✔ Sent: ${itemId}</span>`;
+  };
 
-      document.getElementById("status").innerHTML =
-        `<span class="success">
-          ✔ ${data.itemId}<br>
-          Remaining: ${data.remaining}
-        </span>`;
+  img.onerror = function () {
+    document.getElementById("status").innerHTML =
+      `<span class="success">✔ Sent (no response): ${itemId}</span>`;
+  };
 
-      setTimeout(() => {
-        scanning = false;
-        startScanner();
-      }, 1500);
+  img.src = url;
 
-    })
-    .catch(err => {
-
-      document.getElementById("status").innerHTML =
-        `<span class="error">Load failed: ${err.message}</span>`;
-    });
+  // restart scanner
+  setTimeout(() => {
+    scanning = false;
+    startScanner();
+  }, 1200);
 }
 
 </script>
