@@ -5,7 +5,7 @@
   <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Stable QR Library -->
+  <!-- QR Library -->
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -59,10 +59,12 @@
       max-width: 420px;
       margin-left: auto;
       margin-right: auto;
+      font-size: 16px;
     }
 
     .success { color: green; font-weight: bold; }
     .error { color: red; font-weight: bold; }
+    .scan { color: #111827; }
   </style>
 
 </head>
@@ -100,10 +102,18 @@ async function startScanner() {
   try {
 
     await html5QrCode.start(
-      { facingMode: "environment" }, // forces rear camera
+      { facingMode: { exact: "environment" } },
       {
-        fps: 15,
-        qrbox: { width: 250, height: 250 }
+        fps: 20,
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+          let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          let size = Math.floor(minEdge * 0.8);
+          return { width: size, height: size };
+        },
+        aspectRatio: 1.0,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
       },
       onScanSuccess
     );
@@ -116,10 +126,18 @@ async function startScanner() {
 
 function onScanSuccess(decodedText) {
 
-  html5QrCode.stop(); // stop to prevent duplicates
+  html5QrCode.stop();
 
-  document.getElementById("status").innerText =
-    "Scanned: " + decodedText;
+  document.getElementById("status").innerHTML =
+    `<span class="scan">Scanned: ${decodedText}</span>`;
+
+  // slight delay improves iPhone stability
+  setTimeout(() => {
+    sendToAPI(decodedText);
+  }, 300);
+}
+
+function sendToAPI(itemId) {
 
   fetch(API_URL, {
     method: "POST",
@@ -127,7 +145,7 @@ function onScanSuccess(decodedText) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      itemId: decodedText,
+      itemId: itemId,
       qty: 1
     })
   })
@@ -140,6 +158,7 @@ function onScanSuccess(decodedText) {
         Remaining: ${data.remaining}
       </span>`;
 
+    // restart scanning
     setTimeout(() => {
       scanning = false;
       startScanner();
@@ -147,8 +166,14 @@ function onScanSuccess(decodedText) {
 
   })
   .catch(err => {
+
     document.getElementById("status").innerHTML =
-      `<span class="error">${err.message}</span>`;
+      `<span class="error">Error: ${err.message}</span>`;
+
+    setTimeout(() => {
+      scanning = false;
+      startScanner();
+    }, 2000);
   });
 }
 
