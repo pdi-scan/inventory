@@ -57,6 +57,7 @@
       max-width: 420px;
       margin-left: auto;
       margin-right: auto;
+      font-size: 16px;
     }
 
     .success { color: green; font-weight: bold; }
@@ -82,7 +83,7 @@
 
 <script>
 
-const API_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 let html5QrCode;
 let scanning = false;
@@ -124,16 +125,20 @@ function onScanSuccess(decodedText) {
 
   html5QrCode.stop();
 
-  document.getElementById("status").innerHTML =
-    `<span class="scan">Scanned: ${decodedText}</span>`;
+  // 🔥 CRITICAL FIX: clean QR input
+  const cleanId = String(decodedText).trim();
 
-  sendToAPI(decodedText);
+  document.getElementById("status").innerHTML =
+    `<span class="scan">Scanned: ${cleanId}</span>`;
+
+  sendToAPI(cleanId);
 }
 
 function sendToAPI(itemId) {
 
-  // ✅ CRITICAL FIX: use GET (no CORS preflight)
-  const url = API_URL +
+  // 🔥 FORCE PROPER QUERY STRING (prevents missing parameter issues)
+  const url =
+    API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
     "&qty=1";
 
