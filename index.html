@@ -1,10 +1,14 @@
 <!DOCTYPE html>
+
 <html>
 <head>
   <title>Inventory Scanner</title>
 
-  <!-- MOBILE VIEWPORT (CRITICAL) -->
+  <!-- Mobile viewport -->
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- QR Scanner Library -->
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -12,12 +16,12 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
       margin: 0;
-      background: #f5f5f5;
+      background: #f3f4f6;
       text-align: center;
     }
 
     header {
-      background: #1f2937;
+      background: #111827;
       color: white;
       padding: 16px;
       font-size: 20px;
@@ -25,12 +29,12 @@
     }
 
     .container {
-      padding: 15px;
+      padding: 16px;
     }
 
     #reader {
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
       margin: 0 auto;
       border-radius: 12px;
       overflow: hidden;
@@ -39,7 +43,7 @@
 
     button {
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
       padding: 16px;
       font-size: 18px;
       margin-top: 15px;
@@ -48,7 +52,6 @@
       background: #2563eb;
       color: white;
       font-weight: bold;
-      touch-action: manipulation;
     }
 
     button:active {
@@ -61,26 +64,17 @@
       padding: 12px;
       border-radius: 8px;
       background: white;
-      max-width: 400px;
+      max-width: 420px;
       margin-left: auto;
       margin-right: auto;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    .success {
-      color: #16a34a;
-      font-weight: bold;
-    }
-
-    .error {
-      color: #dc2626;
-      font-weight: bold;
-    }
-
-    .scanned {
-      color: #111827;
-    }
+    .success { color: #16a34a; font-weight: bold; }
+    .error { color: #dc2626; font-weight: bold; }
+    .scanned { color: #111827; }
   </style>
+
 </head>
 
 <body>
@@ -91,7 +85,7 @@
 
   <div id="reader"></div>
 
-  <button onclick="startScanner()">📷 Start Scanner</button>
+<button onclick="startScanner()">📷 Start Scanner</button>
 
   <div id="status">Tap “Start Scanner” to begin</div>
 
@@ -107,23 +101,54 @@ let scanning = false;
 function startScanner() {
 
   if (scanning) return;
-
   scanning = true;
 
   document.getElementById("status").innerText = "Starting camera...";
 
-  scanner = new Html5QrcodeScanner("reader", {
-    fps: 10,
-    qrbox: { width: 250, height: 250 }
-  });
+  scanner = new Html5Qrcode("reader");
 
-  scanner.render(onScanSuccess);
+  const config = {
+    fps: 15,
+    qrbox: function(viewfinderWidth, viewfinderHeight) {
+      let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+      let size = Math.floor(minEdge * 0.7);
+      return { width: size, height: size };
+    },
+    aspectRatio: 1.0
+  };
+
+  Html5Qrcode.getCameras().then(devices => {
+
+    if (devices && devices.length) {
+
+      const backCamera = devices.find(d =>
+        d.label.toLowerCase().includes("back") ||
+        d.label.toLowerCase().includes("rear")
+      );
+
+      const cameraId = backCamera ? backCamera.id : devices[0].id;
+
+      scanner.start(
+        cameraId,
+        config,
+        onScanSuccess,
+        () => {}
+      );
+
+    } else {
+      document.getElementById("status").innerText =
+        "No cameras found.";
+    }
+
+  }).catch(err => {
+    document.getElementById("status").innerText =
+      "Camera error: " + err;
+  });
 }
 
 function onScanSuccess(decodedText) {
 
-  // prevent rapid duplicate scans
-  scanner.pause(true);
+  scanner.stop(); // prevent duplicate scans
 
   document.getElementById("status").innerHTML =
     `<span class="scanned">Scanned: ${decodedText}</span>`;
@@ -147,18 +172,21 @@ function onScanSuccess(decodedText) {
         Remaining: ${data.remaining}
       </span>`;
 
-    // resume scanning after short delay
+    // restart scanner after short delay
     setTimeout(() => {
-      scanner.resume();
+      scanning = false;
+      startScanner();
     }, 1500);
 
   })
   .catch(err => {
+
     document.getElementById("status").innerHTML =
       `<span class="error">Error: ${err.message}</span>`;
 
     setTimeout(() => {
-      scanner.resume();
+      scanning = false;
+      startScanner();
     }, 2000);
   });
 }
