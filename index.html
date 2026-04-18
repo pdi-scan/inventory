@@ -5,7 +5,9 @@
   <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <!-- FIXED ZXING LIBRARY -->
+
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
 
   <style>
     body {
@@ -69,8 +71,6 @@
 
 <div class="container">
 
-  <!-- IMPORTANT: playsinline fixes iPhone -->
-
 <video id="video" autoplay playsinline muted></video>
 
 <button onclick="startScanner()">📷 Start Scanner</button>
@@ -95,7 +95,7 @@ async function startScanner() {
 
   try {
 
-    // STEP 1: Force permission FIRST (critical for iPhone)
+    // Step 1: get camera permission
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" }
     });
@@ -105,14 +105,14 @@ async function startScanner() {
 
     document.getElementById("status").innerText = "Camera started";
 
-    // STEP 2: Start QR decoding AFTER camera is live
-    codeReader = new ZXing.BrowserQRCodeReader();
+    // Step 2: initialize ZXing AFTER camera is active
+    codeReader = new ZXing.BrowserMultiFormatReader();
 
     codeReader.decodeFromVideoElement(video, (result, err) => {
 
       if (result) {
 
-        const text = result.getText();
+        const text = result.text;
 
         document.getElementById("status").innerText =
           "Scanned: " + text;
@@ -151,7 +151,6 @@ function sendToAPI(itemId) {
         Remaining: ${data.remaining}
       </span>`;
 
-    // restart scanning
     setTimeout(() => {
       scanning = false;
       startScanner();
