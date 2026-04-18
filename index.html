@@ -3,10 +3,7 @@
 <html>
 <head>
   <title>Inventory Scanner</title>
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- ZXING (better for iPhone) -->
 
   <script src="https://unpkg.com/@zxing/browser@latest"></script>
 
@@ -72,7 +69,9 @@
 
 <div class="container">
 
-<video id="video"></video>
+  <!-- IMPORTANT: playsinline fixes iPhone -->
+
+<video id="video" autoplay playsinline muted></video>
 
 <button onclick="startScanner()">📷 Start Scanner</button>
 
@@ -92,21 +91,24 @@ async function startScanner() {
   if (scanning) return;
   scanning = true;
 
-  document.getElementById("status").innerText = "Starting camera...";
-
-  codeReader = new ZXing.BrowserQRCodeReader();
+  document.getElementById("status").innerText = "Requesting camera...";
 
   try {
-    const devices = await ZXing.BrowserQRCodeReader.listVideoInputDevices();
 
-    // Prefer back camera
-    const backCamera = devices.find(d =>
-      d.label.toLowerCase().includes("back")
-    );
+    // STEP 1: Force permission FIRST (critical for iPhone)
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
 
-    const deviceId = backCamera ? backCamera.deviceId : devices[0].deviceId;
+    const video = document.getElementById("video");
+    video.srcObject = stream;
 
-    codeReader.decodeFromVideoDevice(deviceId, "video", (result, err) => {
+    document.getElementById("status").innerText = "Camera started";
+
+    // STEP 2: Start QR decoding AFTER camera is live
+    codeReader = new ZXing.BrowserQRCodeReader();
+
+    codeReader.decodeFromVideoElement(video, (result, err) => {
 
       if (result) {
 
@@ -115,7 +117,7 @@ async function startScanner() {
         document.getElementById("status").innerText =
           "Scanned: " + text;
 
-        codeReader.reset(); // stop scanning
+        codeReader.reset();
 
         sendToAPI(text);
       }
@@ -124,7 +126,7 @@ async function startScanner() {
 
   } catch (err) {
     document.getElementById("status").innerText =
-      "Camera error: " + err;
+      "Camera error: " + err.message;
   }
 }
 
@@ -144,4 +146,25 @@ function sendToAPI(itemId) {
   .then(data => {
 
     document.getElementById("status").innerHTML =
-      `<span
+      `<span class="success">
+        ✔ ${data.itemId}<br>
+        Remaining: ${data.remaining}
+      </span>`;
+
+    // restart scanning
+    setTimeout(() => {
+      scanning = false;
+      startScanner();
+    }, 1500);
+
+  })
+  .catch(err => {
+    document.getElementById("status").innerHTML =
+      `<span class="error">${err.message}</span>`;
+  });
+}
+
+</script>
+
+</body>
+</html>
