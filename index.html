@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inventory Scanner</title>
+
+  <!-- MOBILE VIEWPORT (CRITICAL) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+      text-align: center;
+    }
+
+    header {
+      background: #1f2937;
+      color: white;
+      padding: 16px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .container {
+      padding: 15px;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: black;
+    }
+
+    button {
+      width: 100%;
+      max-width: 400px;
+      padding: 16px;
+      font-size: 18px;
+      margin-top: 15px;
+      border: none;
+      border-radius: 10px;
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+      touch-action: manipulation;
+    }
+
+    button:active {
+      background: #1d4ed8;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      background: white;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .success {
+      color: #16a34a;
+      font-weight: bold;
+    }
+
+    .error {
+      color: #dc2626;
+      font-weight: bold;
+    }
+
+    .scanned {
+      color: #111827;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>📦 Inventory Scanner</header>
+
+<div class="container">
+
+  <div id="reader"></div>
+
+  <button onclick="startScanner()">📷 Start Scanner</button>
+
+  <div id="status">Tap “Start Scanner” to begin</div>
+
+</div>
+
+<script>
+
+const API_URL = "https://script.google.com/macros/s/AKfycbwbYo7Sms6IetRxosD0zKER4TgGWSNv9ip4nStnlcbIrlIcNtFYqvr61FJNy55riprZ/exec";
+
+let scanner;
+let scanning = false;
+
+function startScanner() {
+
+  if (scanning) return;
+
+  scanning = true;
+
+  document.getElementById("status").innerText = "Starting camera...";
+
+  scanner = new Html5QrcodeScanner("reader", {
+    fps: 10,
+    qrbox: { width: 250, height: 250 }
+  });
+
+  scanner.render(onScanSuccess);
+}
+
+function onScanSuccess(decodedText) {
+
+  // prevent rapid duplicate scans
+  scanner.pause(true);
+
+  document.getElementById("status").innerHTML =
+    `<span class="scanned">Scanned: ${decodedText}</span>`;
+
+  fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      itemId: decodedText,
+      qty: 1
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+
+    document.getElementById("status").innerHTML =
+      `<span class="success">
+        ✔ ${data.itemId}<br>
+        Remaining: ${data.remaining}
+      </span>`;
+
+    // resume scanning after short delay
+    setTimeout(() => {
+      scanner.resume();
+    }, 1500);
+
+  })
+  .catch(err => {
+    document.getElementById("status").innerHTML =
+      `<span class="error">Error: ${err.message}</span>`;
+
+    setTimeout(() => {
+      scanner.resume();
+    }, 2000);
+  });
+}
+
+</script>
+
+</body>
+</html>
