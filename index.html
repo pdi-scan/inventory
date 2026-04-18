@@ -83,7 +83,11 @@
 
 <div class="container">
 
+  <!-- Project ID -->
   <input id="projectId" type="text" placeholder="Enter Project ID">
+
+  <!-- Quantity -->
+  <input id="qty" type="number" min="1" value="1" placeholder="Quantity">
 
   <button id="startBtn" onclick="startScanner()" disabled>
     📷 Start Scanner
@@ -102,9 +106,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4
 let html5QrCode;
 let scanLock = false;
 
-// Enable button only when project ID exists
+// Enable button only when Project ID exists
 document.getElementById("projectId").addEventListener("input", function () {
-  document.getElementById("startBtn").disabled = this.value.trim().length === 0;
+  document.getElementById("startBtn").disabled =
+    this.value.trim().length === 0;
 });
 
 function startScanner() {
@@ -155,8 +160,8 @@ function onScanSuccess(decodedText) {
 
 function sendToAPI(itemId) {
 
-  // 🔥 ALWAYS READ CURRENT VALUE (fixes missing project bug)
   const projectId = document.getElementById("projectId").value.trim();
+  const qty = parseInt(document.getElementById("qty").value, 10) || 1;
 
   if (!projectId) {
     document.getElementById("status").innerText =
@@ -167,14 +172,14 @@ function sendToAPI(itemId) {
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=1" +
+    "&qty=" + encodeURIComponent(qty) +
     "&projectId=" + encodeURIComponent(projectId);
 
   const img = new Image();
   img.src = url;
 
   document.getElementById("status").innerHTML =
-    `<span class="ok">✔ Sent: ${itemId}</span>`;
+    `<span class="ok">✔ Sent: ${itemId} (Qty: ${qty})</span>`;
 }
 
 </script>
