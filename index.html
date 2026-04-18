@@ -125,7 +125,7 @@ function onScanSuccess(decodedText) {
 
   html5QrCode.stop();
 
-  // 🔥 CRITICAL FIX: clean QR input
+  // 🔥 CLEAN QR INPUT
   const cleanId = String(decodedText).trim();
 
   document.getElementById("status").innerHTML =
@@ -136,7 +136,7 @@ function onScanSuccess(decodedText) {
 
 function sendToAPI(itemId) {
 
-  // 🔥 FORCE PROPER QUERY STRING (prevents missing parameter issues)
+  // 🔥 CONSISTENT PARAM NAME: itemId (NOT itemID)
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
