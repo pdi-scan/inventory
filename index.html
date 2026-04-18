@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
   <title>Inventory Scanner</title>
@@ -27,6 +26,16 @@
       padding: 16px;
     }
 
+    input {
+      width: 100%;
+      max-width: 420px;
+      padding: 14px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
     #reader {
       width: 100%;
       max-width: 420px;
@@ -41,12 +50,16 @@
       max-width: 420px;
       padding: 16px;
       font-size: 18px;
-      margin-top: 15px;
+      margin-top: 10px;
       border: none;
       border-radius: 10px;
       background: #2563eb;
       color: white;
       font-weight: bold;
+    }
+
+    button:disabled {
+      background: #9ca3af;
     }
 
     #status {
@@ -61,9 +74,7 @@
     }
 
     .ok { color: green; font-weight: bold; }
-    .scan { color: #111827; }
   </style>
-
 </head>
 
 <body>
@@ -72,11 +83,15 @@
 
 <div class="container">
 
+  <input id="projectId" type="text" placeholder="Enter Project ID">
+
+  <button id="startBtn" onclick="startScanner()" disabled>
+    📷 Start Scanner
+  </button>
+
   <div id="reader"></div>
 
-<button onclick="startScanner()">📷 Start Scanner</button>
-
-  <div id="status">Ready</div>
+  <div id="status">Enter Project ID to begin</div>
 
 </div>
 
@@ -86,49 +101,49 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4
 
 let html5QrCode;
 let scanLock = false;
+let PROJECT_ID = "";
 
-async function startScanner() {
+// Enable button when project ID entered
+document.getElementById("projectId").addEventListener("input", function () {
+  const val = this.value.trim();
+  document.getElementById("startBtn").disabled = val.length === 0;
+});
 
-  document.getElementById("status").innerText = "Starting camera...";
+function startScanner() {
+
+  PROJECT_ID = document.getElementById("projectId").value.trim();
+
+  if (!PROJECT_ID) {
+    alert("Enter Project ID first");
+    return;
+  }
+
+  document.getElementById("status").innerText =
+    "Project: " + PROJECT_ID + " | Starting scanner...";
 
   html5QrCode = new Html5Qrcode("reader");
 
-  try {
-
-    await html5QrCode.start(
-      { facingMode: "environment" },
-      { fps: 15, qrbox: 250 },
-      onScanSuccess
-    );
-
-  } catch (err) {
-    document.getElementById("status").innerText =
-      "Camera error: " + err;
-  }
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 15, qrbox: 250 },
+    onScanSuccess
+  );
 }
 
 function onScanSuccess(decodedText) {
 
-  // 🔥 BLOCK MULTIPLE TRIGGERS
   if (scanLock) return;
 
   const itemId = (decodedText || "").toString().trim();
 
-  console.log("RAW SCAN:", decodedText);
-  console.log("CLEAN SCAN:", itemId);
-
-  // 🔥 HARD VALIDATION (prevents undefined)
-  if (!itemId || itemId === "undefined") {
-    console.log("INVALID SCAN BLOCKED");
-    return;
-  }
+  if (!itemId || itemId === "undefined") return;
 
   scanLock = true;
 
   html5QrCode.stop().then(() => {
 
     document.getElementById("status").innerHTML =
-      `<span class="scan">Scanned: ${itemId}</span>`;
+      "Scanned: " + itemId;
 
     sendToAPI(itemId);
 
@@ -137,24 +152,16 @@ function onScanSuccess(decodedText) {
       startScanner();
     }, 1500);
 
-  }).catch(err => {
-    console.log("Stop error:", err);
   });
 }
 
 function sendToAPI(itemId) {
 
-  if (!itemId) {
-    console.error("BLOCKED EMPTY ITEM");
-    return;
-  }
-
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=1";
-
-  console.log("CALLING:", url);
+    "&qty=1" +
+    "&projectId=" + encodeURIComponent(PROJECT_ID);
 
   const img = new Image();
 
