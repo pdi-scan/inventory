@@ -5,8 +5,6 @@
   <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- QR SCANNER -->
-
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
@@ -59,7 +57,6 @@
       max-width: 420px;
       margin-left: auto;
       margin-right: auto;
-      font-size: 16px;
     }
 
     .success { color: green; font-weight: bold; }
@@ -85,7 +82,7 @@
 
 <script>
 
-const API_URL = "https://script.google.com/macros/s/AKfycbwbYo7Sms6IetRxosD0zKER4TgGWSNv9ip4nStnlcbIrlIcNtFYqvr61FJNy55riprZ/exec";
+const API_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
 
 let html5QrCode;
 let scanning = false;
@@ -112,10 +109,7 @@ async function startScanner() {
             height: Math.floor(minEdge * 0.8)
           };
         },
-        aspectRatio: 1.0,
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
-        }
+        aspectRatio: 1.0
       },
       onScanSuccess
     );
@@ -133,48 +127,39 @@ function onScanSuccess(decodedText) {
   document.getElementById("status").innerHTML =
     `<span class="scan">Scanned: ${decodedText}</span>`;
 
-  setTimeout(() => {
-    sendToAPI(decodedText);
-  }, 200);
+  sendToAPI(decodedText);
 }
 
 function sendToAPI(itemId) {
 
-  // IMPORTANT: NO HEADERS (prevents iOS CORS failures)
-  fetch(API_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      itemId: itemId,
-      qty: 1
+  // ✅ CRITICAL FIX: use GET (no CORS preflight)
+  const url = API_URL +
+    "?itemId=" + encodeURIComponent(itemId) +
+    "&qty=1";
+
+  fetch(url, { method: "GET" })
+    .then(res => res.text())
+    .then(text => {
+
+      const data = JSON.parse(text);
+
+      document.getElementById("status").innerHTML =
+        `<span class="success">
+          ✔ ${data.itemId}<br>
+          Remaining: ${data.remaining}
+        </span>`;
+
+      setTimeout(() => {
+        scanning = false;
+        startScanner();
+      }, 1500);
+
     })
-  })
-  .then(async (res) => {
+    .catch(err => {
 
-    const text = await res.text();
-    const data = JSON.parse(text);
-
-    document.getElementById("status").innerHTML =
-      `<span class="success">
-        ✔ ${data.itemId}<br>
-        Remaining: ${data.remaining}
-      </span>`;
-
-    setTimeout(() => {
-      scanning = false;
-      startScanner();
-    }, 1500);
-
-  })
-  .catch(err => {
-
-    document.getElementById("status").innerHTML =
-      `<span class="error">Load failed: ${err.message}</span>`;
-
-    setTimeout(() => {
-      scanning = false;
-      startScanner();
-    }, 2000);
-  });
+      document.getElementById("status").innerHTML =
+        `<span class="error">Load failed: ${err.message}</span>`;
+    });
 }
 
 </script>
