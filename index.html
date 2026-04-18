@@ -5,7 +5,7 @@
   <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- QR SCANNER -->
+  <!-- QR Library -->
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -107,10 +107,8 @@ async function startScanner() {
         fps: 20,
         qrbox: function(viewfinderWidth, viewfinderHeight) {
           let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          return {
-            width: Math.floor(minEdge * 0.8),
-            height: Math.floor(minEdge * 0.8)
-          };
+          let size = Math.floor(minEdge * 0.8);
+          return { width: size, height: size };
         },
         aspectRatio: 1.0,
         experimentalFeatures: {
@@ -133,25 +131,26 @@ function onScanSuccess(decodedText) {
   document.getElementById("status").innerHTML =
     `<span class="scan">Scanned: ${decodedText}</span>`;
 
+  // slight delay improves iPhone stability
   setTimeout(() => {
     sendToAPI(decodedText);
-  }, 200);
+  }, 300);
 }
 
 function sendToAPI(itemId) {
 
-  // IMPORTANT: NO HEADERS (prevents iOS CORS failures)
   fetch(API_URL, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
       itemId: itemId,
       qty: 1
     })
   })
-  .then(async (res) => {
-
-    const text = await res.text();
-    const data = JSON.parse(text);
+  .then(res => res.json())
+  .then(data => {
 
     document.getElementById("status").innerHTML =
       `<span class="success">
@@ -159,6 +158,7 @@ function sendToAPI(itemId) {
         Remaining: ${data.remaining}
       </span>`;
 
+    // restart scanning
     setTimeout(() => {
       scanning = false;
       startScanner();
@@ -168,7 +168,7 @@ function sendToAPI(itemId) {
   .catch(err => {
 
     document.getElementById("status").innerHTML =
-      `<span class="error">Load failed: ${err.message}</span>`;
+      `<span class="error">Error: ${err.message}</span>`;
 
     setTimeout(() => {
       scanning = false;
