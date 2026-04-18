@@ -1,108 +1,233 @@
-function doGet(e) {
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inventory Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  const params = (e && e.parameter) ? e.parameter : {};
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
-  const itemId = (params.itemId || "").toString().trim();
-  const qty = Number(params.qty || 1);
-  const projectId = (params.projectId || "").toString().trim();
-  const user = (params.user || "").toString().trim();
-
-  if (!itemId) {
-    return output({
-      success: false,
-      error: "Missing itemId",
-      received: params
-    });
-  }
-
-  const result = deductStock(itemId, qty, projectId, user);
-
-  return output(result);
-}
-
-
-// ============================
-// STOCK DEDUCTION
-// ============================
-function deductStock(itemId, qty, projectId, user) {
-
-  const sheet = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName("INVENTORY");
-
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-
-  const idCol = headers.indexOf("Item ID");
-  const onHandCol = headers.indexOf("On Hand");
-
-  const cleanItem = String(itemId).trim();
-
-  for (let i = 1; i < data.length; i++) {
-
-    const rowItem = String(data[i][idCol]).trim();
-
-    if (rowItem === cleanItem) {
-
-      let current = Number(data[i][onHandCol]) || 0;
-      let updated = current - qty;
-
-      if (updated < 0) updated = 0;
-
-      sheet.getRange(i + 1, onHandCol + 1).setValue(updated);
-
-      logScan(cleanItem, qty, updated, projectId, user);
-
-      return {
-        success: true,
-        itemId: cleanItem,
-        remaining: updated,
-        projectId: projectId,
-        user: user
-      };
+  <style>
+    body {
+      font-family: -apple-system, Arial;
+      margin: 0;
+      background: #f3f4f6;
+      text-align: center;
     }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 16px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .container {
+      padding: 16px;
+    }
+
+    label {
+      display: block;
+      text-align: left;
+      max-width: 420px;
+      margin: 0 auto 4px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    input {
+      width: 100%;
+      max-width: 420px;
+      padding: 14px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 420px;
+      margin: auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: black;
+    }
+
+    button {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px;
+      font-size: 18px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 10px;
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+    }
+
+    #status {
+      margin-top: 20px;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+      max-width: 420px;
+      margin-left: auto;
+      margin-right: auto;
+      font-size: 16px;
+    }
+
+    .ok { color: green; font-weight: bold; }
+    .error { color: red; font-weight: bold; }
+  </style>
+</head>
+
+<body>
+
+<header>📦 Inventory Scanner</header>
+
+<div class="container">
+
+  <!-- Device/User -->
+  <label>Device/User</label>
+  <input id="user" type="text" placeholder="Enter your name">
+
+  <!-- Project ID -->
+  <label>Project ID</label>
+  <input id="projectId" type="text" placeholder="Enter Project ID">
+
+  <!-- Qty -->
+  <label>Qty</label>
+  <input id="qty" type="number" min="1" value="1">
+
+  <button id="startBtn" onclick="startScanner()" disabled>
+    📷 Start Scanner
+  </button>
+
+  <div id="reader"></div>
+
+  <div id="status">Enter User + Project ID</div>
+
+</div>
+
+<script>
+
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+
+let html5QrCode;
+let scanLock = false;
+
+/* =========================
+   LOAD SAVED USER
+========================= */
+window.addEventListener("load", () => {
+  const savedUser = localStorage.getItem("scan_user");
+  if (savedUser) {
+    document.getElementById("user").value = savedUser;
+  }
+  checkReady();
+});
+
+/* =========================
+   SAVE USER
+========================= */
+document.getElementById("user").addEventListener("input", function () {
+  localStorage.setItem("scan_user", this.value.trim());
+  checkReady();
+});
+
+/* =========================
+   PROJECT CHECK
+========================= */
+document.getElementById("projectId").addEventListener("input", checkReady);
+
+function checkReady() {
+  const user = document.getElementById("user").value.trim();
+  const project = document.getElementById("projectId").value.trim();
+
+  document.getElementById("startBtn").disabled = !(user && project);
+}
+
+/* =========================
+   START SCANNER
+========================= */
+function startScanner() {
+
+  const user = document.getElementById("user").value.trim();
+  const projectId = document.getElementById("projectId").value.trim();
+
+  if (!user || !projectId) {
+    alert("User and Project ID required");
+    return;
   }
 
-  return {
-    success: false,
-    error: "Item not found",
-    itemId: cleanItem
-  };
+  document.getElementById("status").innerText =
+    `Project: ${projectId} | User: ${user}`;
+
+  html5QrCode = new Html5Qrcode("reader");
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 15, qrbox: 250 },
+    onScanSuccess
+  );
 }
 
+/* =========================
+   SCAN HANDLER
+========================= */
+function onScanSuccess(decodedText) {
 
-// ============================
-// SCAN LOG (MATCHES YOUR SHEET EXACTLY)
-// Timestamp | Project ID | Item ID | Qty | Remaining | Device/user
-// ============================
-function logScan(itemId, qty, remaining, projectId, user) {
+  if (scanLock) return;
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet()
-    .getSheetByName("SCAN_LOG");
+  const itemId = (decodedText || "").toString().trim();
+  if (!itemId) return;
 
-  const safeProject = projectId && projectId.trim()
-    ? projectId
-    : "NO_PROJECT";
+  scanLock = true;
 
-  const safeUser = user && user.trim()
-    ? user
-    : "UNKNOWN";
+  html5QrCode.stop().then(() => {
 
-  sheet.appendRow([
-    new Date(),     // Timestamp (A)
-    safeProject,    // Project ID (B)
-    itemId,         // Item ID (C)
-    qty,            // Qty (D)
-    remaining,      // Remaining (E)
-    safeUser        // Device/user (F)
-  ]);
+    sendToAPI(itemId);
+
+    setTimeout(() => {
+      scanLock = false;
+      startScanner();
+    }, 1200);
+
+  });
 }
 
+/* =========================
+   SEND TO APPS SCRIPT
+========================= */
+function sendToAPI(itemId) {
 
-// ============================
-// RESPONSE HELPER
-// ============================
-function output(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  const user = document.getElementById("user").value.trim();
+  const projectId = document.getElementById("projectId").value.trim();
+  const qty = parseInt(document.getElementById("qty").value, 10) || 1;
+
+  const url =
+    API_URL +
+    "?itemId=" + encodeURIComponent(itemId) +
+    "&qty=" + encodeURIComponent(qty) +
+    "&projectId=" + encodeURIComponent(projectId) +
+    "&user=" + encodeURIComponent(user);
+
+  const img = new Image();
+  img.src = url;
+
+  document.getElementById("status").innerHTML =
+    `<span class="ok">✔ ${itemId} (Qty: ${qty}) by ${user}</span>`;
 }
+
+</script>
+
+</body>
+</html>
