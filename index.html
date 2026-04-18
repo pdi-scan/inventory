@@ -85,12 +85,9 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 let html5QrCode;
-let scanning = false;
+let scanLock = false;
 
 async function startScanner() {
-
-  if (scanning) return;
-  scanning = true;
 
   document.getElementById("status").innerText = "Starting camera...";
 
@@ -99,7 +96,7 @@ async function startScanner() {
   try {
 
     await html5QrCode.start(
-      { facingMode: { exact: "environment" } },
+      { facingMode: "environment" },
       { fps: 15, qrbox: 250 },
       onScanSuccess
     );
@@ -112,31 +109,43 @@ async function startScanner() {
 
 function onScanSuccess(decodedText) {
 
-  html5QrCode.stop();
+  // 🔥 BLOCK MULTIPLE TRIGGERS
+  if (scanLock) return;
 
-  // 🔥 HARD GUARANTEE CLEAN VALUE
   const itemId = (decodedText || "").toString().trim();
 
-  console.log("RAW QR:", decodedText);
-  console.log("CLEAN ITEMID:", itemId);
+  console.log("RAW SCAN:", decodedText);
+  console.log("CLEAN SCAN:", itemId);
 
+  // 🔥 HARD VALIDATION (prevents undefined)
   if (!itemId || itemId === "undefined") {
-    document.getElementById("status").innerText =
-      "Invalid QR code";
+    console.log("INVALID SCAN BLOCKED");
     return;
   }
 
-  document.getElementById("status").innerHTML =
-    `<span class="scan">Scanned: ${itemId}</span>`;
+  scanLock = true;
 
-  sendToAPI(itemId);
+  html5QrCode.stop().then(() => {
+
+    document.getElementById("status").innerHTML =
+      `<span class="scan">Scanned: ${itemId}</span>`;
+
+    sendToAPI(itemId);
+
+    setTimeout(() => {
+      scanLock = false;
+      startScanner();
+    }, 1500);
+
+  }).catch(err => {
+    console.log("Stop error:", err);
+  });
 }
 
 function sendToAPI(itemId) {
 
-  // 🔥 FINAL SAFETY CHECK
   if (!itemId) {
-    console.error("BLOCKED: empty itemId");
+    console.error("BLOCKED EMPTY ITEM");
     return;
   }
 
@@ -147,7 +156,6 @@ function sendToAPI(itemId) {
 
   console.log("CALLING:", url);
 
-  // CORS-safe request
   const img = new Image();
 
   img.onload = function () {
@@ -161,11 +169,6 @@ function sendToAPI(itemId) {
   };
 
   img.src = url;
-
-  setTimeout(() => {
-    scanning = false;
-    startScanner();
-  }, 1200);
 }
 
 </script>
