@@ -5,9 +5,9 @@
   <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- FIXED ZXING LIBRARY -->
+  <!-- Stable QR Library -->
 
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
     body {
@@ -29,10 +29,12 @@
       padding: 16px;
     }
 
-    video {
+    #reader {
       width: 100%;
       max-width: 420px;
+      margin: auto;
       border-radius: 12px;
+      overflow: hidden;
       background: black;
     }
 
@@ -71,7 +73,7 @@
 
 <div class="container">
 
-<video id="video" autoplay playsinline muted></video>
+  <div id="reader"></div>
 
 <button onclick="startScanner()">📷 Start Scanner</button>
 
@@ -83,7 +85,7 @@
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwbYo7Sms6IetRxosD0zKER4TgGWSNv9ip4nStnlcbIrlIcNtFYqvr61FJNy55riprZ/exec";
 
-let codeReader;
+let html5QrCode;
 let scanning = false;
 
 async function startScanner() {
@@ -91,46 +93,33 @@ async function startScanner() {
   if (scanning) return;
   scanning = true;
 
-  document.getElementById("status").innerText = "Requesting camera...";
+  document.getElementById("status").innerText = "Starting camera...";
+
+  html5QrCode = new Html5Qrcode("reader");
 
   try {
 
-    // Step 1: get camera permission
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }
-    });
-
-    const video = document.getElementById("video");
-    video.srcObject = stream;
-
-    document.getElementById("status").innerText = "Camera started";
-
-    // Step 2: initialize ZXing AFTER camera is active
-    codeReader = new ZXing.BrowserMultiFormatReader();
-
-    codeReader.decodeFromVideoElement(video, (result, err) => {
-
-      if (result) {
-
-        const text = result.text;
-
-        document.getElementById("status").innerText =
-          "Scanned: " + text;
-
-        codeReader.reset();
-
-        sendToAPI(text);
-      }
-
-    });
+    await html5QrCode.start(
+      { facingMode: "environment" }, // forces rear camera
+      {
+        fps: 15,
+        qrbox: { width: 250, height: 250 }
+      },
+      onScanSuccess
+    );
 
   } catch (err) {
     document.getElementById("status").innerText =
-      "Camera error: " + err.message;
+      "Camera error: " + err;
   }
 }
 
-function sendToAPI(itemId) {
+function onScanSuccess(decodedText) {
+
+  html5QrCode.stop(); // stop to prevent duplicates
+
+  document.getElementById("status").innerText =
+    "Scanned: " + decodedText;
 
   fetch(API_URL, {
     method: "POST",
@@ -138,7 +127,7 @@ function sendToAPI(itemId) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      itemId: itemId,
+      itemId: decodedText,
       qty: 1
     })
   })
