@@ -26,6 +26,16 @@
       padding: 16px;
     }
 
+    label {
+      display: block;
+      text-align: left;
+      max-width: 420px;
+      margin: 0 auto 4px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+    }
+
     input {
       width: 100%;
       max-width: 420px;
@@ -84,9 +94,11 @@
 <div class="container">
 
   <!-- Project ID -->
+  <label>Project ID</label>
   <input id="projectId" type="text" placeholder="Enter Project ID">
 
   <!-- Quantity -->
+  <label>Qty</label>
   <input id="qty" type="number" min="1" value="1" placeholder="Quantity">
 
   <button id="startBtn" onclick="startScanner()" disabled>
