@@ -101,25 +101,23 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4
 
 let html5QrCode;
 let scanLock = false;
-let PROJECT_ID = "";
 
-// Enable button when project ID entered
+// Enable button only when project ID exists
 document.getElementById("projectId").addEventListener("input", function () {
-  const val = this.value.trim();
-  document.getElementById("startBtn").disabled = val.length === 0;
+  document.getElementById("startBtn").disabled = this.value.trim().length === 0;
 });
 
 function startScanner() {
 
-  PROJECT_ID = document.getElementById("projectId").value.trim();
+  const projectId = document.getElementById("projectId").value.trim();
 
-  if (!PROJECT_ID) {
+  if (!projectId) {
     alert("Enter Project ID first");
     return;
   }
 
   document.getElementById("status").innerText =
-    "Project: " + PROJECT_ID + " | Starting scanner...";
+    "Project: " + projectId + " | Starting scanner...";
 
   html5QrCode = new Html5Qrcode("reader");
 
@@ -142,7 +140,7 @@ function onScanSuccess(decodedText) {
 
   html5QrCode.stop().then(() => {
 
-    document.getElementById("status").innerHTML =
+    document.getElementById("status").innerText =
       "Scanned: " + itemId;
 
     sendToAPI(itemId);
@@ -150,32 +148,33 @@ function onScanSuccess(decodedText) {
     setTimeout(() => {
       scanLock = false;
       startScanner();
-    }, 1500);
+    }, 1200);
 
   });
 }
 
 function sendToAPI(itemId) {
 
+  // 🔥 ALWAYS READ CURRENT VALUE (fixes missing project bug)
+  const projectId = document.getElementById("projectId").value.trim();
+
+  if (!projectId) {
+    document.getElementById("status").innerText =
+      "ERROR: Missing Project ID";
+    return;
+  }
+
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
     "&qty=1" +
-    "&projectId=" + encodeURIComponent(PROJECT_ID);
+    "&projectId=" + encodeURIComponent(projectId);
 
   const img = new Image();
-
-  img.onload = function () {
-    document.getElementById("status").innerHTML =
-      `<span class="ok">✔ Sent: ${itemId}</span>`;
-  };
-
-  img.onerror = function () {
-    document.getElementById("status").innerHTML =
-      `<span class="ok">✔ Sent (no response): ${itemId}</span>`;
-  };
-
   img.src = url;
+
+  document.getElementById("status").innerHTML =
+    `<span class="ok">✔ Sent: ${itemId}</span>`;
 }
 
 </script>
