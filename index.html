@@ -55,6 +55,15 @@
       background: black;
     }
 
+    /* 🔥 FIXED BUTTON LAYOUT (IMPORTANT) */
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      max-width: 420px;
+      margin: 10px auto 0;
+    }
+
     button {
       padding: 16px;
       font-size: 18px;
@@ -62,6 +71,15 @@
       border-radius: 10px;
       color: white;
       font-weight: bold;
+      width: 100%;
+    }
+
+    #startBtn {
+      background: #2563eb;
+    }
+
+    #exitBtn {
+      background: #dc2626;
     }
 
     button:disabled {
@@ -101,14 +119,14 @@
   <label>Qty</label>
   <input id="qty" type="number" min="1" value="1">
 
-  <!-- BUTTONS -->
-  <div style="display:flex; gap:10px; max-width:420px; margin:auto;">
+  <!-- BUTTONS (FIXED VISIBILITY) -->
+  <div class="button-row">
 
-    <button id="startBtn" onclick="startScanner()" style="flex:1; background:#2563eb;" disabled>
+    <button id="startBtn" onclick="startScanner()" disabled>
       📷 Start
     </button>
 
-    <button onclick="exitApp()" style="flex:1; background:#dc2626;">
+    <button id="exitBtn" onclick="exitApp()">
       ❌ Exit
     </button>
 
@@ -187,7 +205,7 @@ function startScanner() {
 }
 
 /* =========================
-   SCAN LOGIC (ANTI DOUBLE SCAN)
+   DOUBLE SCAN PREVENTION
 ========================= */
 function onScanSuccess(decodedText) {
 
@@ -195,9 +213,7 @@ function onScanSuccess(decodedText) {
   const itemId = (decodedText || "").toString().trim();
 
   if (!itemId) return;
-
   if (scanLock) return;
-
   if (itemId === lastScan && (now - lastScanTime) < 2000) return;
 
   scanLock = true;
@@ -240,7 +256,7 @@ function sendToAPI(itemId) {
 }
 
 /* =========================
-   EXIT APP (SAFE STOP)
+   EXIT APP
 ========================= */
 function exitApp() {
 
