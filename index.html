@@ -95,7 +95,7 @@
 <div class="container">
 
   <!-- USER -->
-  <label>Device / User</label>
+  <label>Device/User</label>
   <input id="user" type="text" placeholder="Enter your name">
 
   <!-- PROJECT -->
@@ -121,8 +121,13 @@
 const API_URL =
   "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
+/* =========================
+   STATE (DOUBLE SCAN PROTECTION)
+========================= */
 let html5QrCode;
 let scanLock = false;
+let lastScan = "";
+let lastScanTime = 0;
 
 /* =========================
    LOAD SAVED USER
@@ -178,16 +183,24 @@ function startScanner() {
 }
 
 /* =========================
-   SCAN HANDLER
+   DOUBLE SCAN PREVENTION
 ========================= */
 function onScanSuccess(decodedText) {
 
-  if (scanLock) return;
-
+  const now = Date.now();
   const itemId = (decodedText || "").toString().trim();
+
   if (!itemId) return;
 
+  // 🔒 BLOCK 1: scan lock
+  if (scanLock) return;
+
+  // 🔒 BLOCK 2: same scan within 2 sec
+  if (itemId === lastScan && (now - lastScanTime) < 2000) return;
+
   scanLock = true;
+  lastScan = itemId;
+  lastScanTime = now;
 
   html5QrCode.stop().then(() => {
 
@@ -196,7 +209,7 @@ function onScanSuccess(decodedText) {
     setTimeout(() => {
       scanLock = false;
       startScanner();
-    }, 1200);
+    }, 1500);
 
   });
 }
@@ -221,7 +234,7 @@ function sendToAPI(itemId) {
   img.src = url;
 
   document.getElementById("status").innerHTML =
-    `✔ ${itemId} (Qty: ${qty}) by ${user}`;
+    `<span class="ok">✔ ${itemId} (Qty: ${qty}) by ${user}</span>`;
 }
 
 </script>
