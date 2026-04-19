@@ -1,18 +1,20 @@
-const CACHE_NAME = "scanner-v2";
+const CACHE_NAME = "scanner-v3";
 
 self.addEventListener("install", e => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll([
-      "./",
-      "./index.html",
-      "./manifest.json"
-    ]))
+    caches.open(CACHE_NAME).then(cache =>
+      cache.addAll([
+        "./",
+        "./index.html",
+        "./manifest.json"
+      ])
+    )
   );
 });
 
 self.addEventListener("fetch", event => {
 
-  // 🔥 DO NOT CACHE APPS SCRIPT CALLS
+  // 🔥 NEVER cache Apps Script calls
   if (event.request.url.includes("script.google.com")) {
     event.respondWith(fetch(event.request));
     return;
