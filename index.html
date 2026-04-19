@@ -43,6 +43,7 @@
       margin-bottom:10px;
       border-radius:8px;
       border:1px solid #ccc;
+      font-size:16px;
     }
 
     #reader {
@@ -51,6 +52,7 @@
       margin:auto;
       background:black;
       border-radius:12px;
+      overflow:hidden;
     }
 
     .button-row {
@@ -68,10 +70,15 @@
       border-radius:10px;
       color:white;
       font-weight:bold;
+      width:100%;
     }
 
     #startBtn { background:#2563eb; }
-    #exitBtn { background:#dc2626; }
+    #exitBtn  { background:#dc2626; }
+
+    button:disabled {
+      background:#9ca3af !important;
+    }
 
     #status {
       margin-top:20px;
@@ -81,6 +88,7 @@
       max-width:420px;
       margin-left:auto;
       margin-right:auto;
+      font-size:16px;
     }
   </style>
 </head>
@@ -91,46 +99,73 @@
 
 <div class="container">
 
-  <label>User</label>
+  <label>Device/User</label>
   <input id="user" placeholder="Enter name">
 
   <label>Project ID</label>
   <input id="projectId" placeholder="Project ID">
 
   <label>Qty</label>
-  <input id="qty" type="number" value="1">
+  <input id="qty" type="number" min="1" value="1">
 
   <div class="button-row">
-    <button id="startBtn" onclick="startScanner()" disabled>Start</button>
-    <button id="exitBtn" onclick="exitApp()">Exit</button>
+    <button id="startBtn" onclick="startScanner()" disabled>📷 Start</button>
+    <button id="exitBtn" onclick="exitApp()">❌ Exit</button>
   </div>
 
   <div id="reader"></div>
-  <div id="status">Ready</div>
+  <div id="status">Enter User + Project ID</div>
 
 </div>
 
 <script>
+/* =========================
+   🔧 SET YOUR REAL URL HERE
+========================= */
+https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec
 
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
-
+/* =========================
+   STATE
+========================= */
 let qr;
 let scanLock = false;
 let lastScan = "";
 let lastScanTime = 0;
 
-/* ================= PWA ================= */
+/* =========================
+   PWA: register SW
+========================= */
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("service-worker.js");
 }
 
-/* ================= READY ================= */
-user.oninput = projectId.oninput = () => {
-  startBtn.disabled = !(user.value.trim() && projectId.value.trim());
-};
+/* =========================
+   READY CHECK
+========================= */
+const userEl = document.getElementById("user");
+const projectEl = document.getElementById("projectId");
+const qtyEl = document.getElementById("qty");
+const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
 
-/* ================= START ================= */
+function checkReady() {
+  const ok = userEl.value.trim() && projectEl.value.trim();
+  startBtn.disabled = !ok;
+}
+userEl.addEventListener("input", checkReady);
+projectEl.addEventListener("input", checkReady);
+
+/* =========================
+   START SCANNER
+========================= */
 function startScanner() {
+
+  if (!userEl.value.trim() || !projectEl.value.trim()) {
+    alert("User and Project ID required");
+    return;
+  }
+
+  statusEl.innerText = `Project: ${projectEl.value} | User: ${userEl.value}`;
 
   qr = new Html5Qrcode("reader");
 
@@ -141,11 +176,13 @@ function startScanner() {
   );
 }
 
-/* ================= SCAN ================= */
+/* =========================
+   SCAN (ANTI DOUBLE SCAN)
+========================= */
 function onScanSuccess(text) {
 
   const now = Date.now();
-  const item = text.trim();
+  const item = (text || "").toString().trim();
 
   if (!item) return;
   if (scanLock) return;
@@ -164,53 +201,56 @@ function onScanSuccess(text) {
       startScanner();
     }, 1200);
 
-  });
+  }).catch(()=>{});
 }
 
-/* ================= SEND (FIXED) ================= */
+/* =========================
+   SEND (GET + fetch)
+========================= */
 function sendToAPI(itemId) {
 
-  const payload = {
-    itemId: itemId,
-    qty: Number(qty.value) || 1,
-    projectId: projectId.value.trim(),
-    user: user.value.trim()
-  };
+  const url =
+    API_URL +
+    "?itemId=" + encodeURIComponent(itemId) +
+    "&qty=" + encodeURIComponent(qtyEl.value || 1) +
+    "&projectId=" + encodeURIComponent(projectEl.value || "") +
+    "&user=" + encodeURIComponent(userEl.value || "");
 
-  console.log("Sending:", payload);
+  console.log("Sending GET:", url);
 
-  fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload),
+  fetch(url, {
+    method: "GET",
     cache: "no-store"
   })
   .then(res => res.text())
   .then(data => {
     console.log("Response:", data);
-    status.innerText = "✔ " + itemId;
+    statusEl.innerText = `✔ ${itemId}`;
   })
   .catch(err => {
     console.error(err);
-    status.innerText = "❌ Error sending scan";
+    statusEl.innerText = "❌ Send failed";
   });
 }
 
-/* ================= EXIT ================= */
+/* =========================
+   EXIT
+========================= */
 function exitApp() {
 
-  if (qr) {
-    qr.stop().catch(()=>{});
-    qr.clear().catch(()=>{});
-  }
+  try {
+    if (qr) {
+      qr.stop().catch(()=>{});
+      qr.clear().catch(()=>{});
+    }
+  } catch (e) {}
 
   scanLock = false;
   lastScan = "";
+  lastScanTime = 0;
 
-  reader.innerHTML = "";
-  status.innerText = "Scanner stopped";
+  document.getElementById("reader").innerHTML = "";
+  statusEl.innerText = "Scanner stopped. You may close the app.";
 }
 
 </script>
