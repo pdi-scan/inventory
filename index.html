@@ -43,6 +43,7 @@
       margin-bottom:10px;
       border-radius:8px;
       border:1px solid #ccc;
+      font-size:16px;
     }
 
     #reader {
@@ -51,6 +52,7 @@
       margin:auto;
       background:black;
       border-radius:12px;
+      overflow:hidden;
     }
 
     .button-row {
@@ -68,10 +70,15 @@
       border-radius:10px;
       color:white;
       font-weight:bold;
+      width:100%;
     }
 
     #startBtn { background:#2563eb; }
-    #exitBtn { background:#dc2626; }
+    #exitBtn  { background:#dc2626; }
+
+    button:disabled {
+      background:#9ca3af !important;
+    }
 
     #status {
       margin-top:20px;
@@ -79,7 +86,9 @@
       padding:12px;
       border-radius:8px;
       max-width:420px;
-      margin:auto;
+      margin-left:auto;
+      margin-right:auto;
+      font-size:16px;
     }
   </style>
 </head>
@@ -90,43 +99,31 @@
 
 <div class="container">
 
-  <label>User</label>
+  <label>Device/User</label>
   <input id="user" placeholder="Enter name">
 
   <label>Project ID</label>
   <input id="projectId" placeholder="Project ID">
 
   <label>Qty</label>
-  <input id="qty" type="number" value="1">
+  <input id="qty" type="number" min="1" value="1">
 
   <div class="button-row">
-    <button id="startBtn" onclick="startScanner()" disabled>Start</button>
-    <button id="exitBtn" onclick="exitApp()">Exit</button>
+    <button id="startBtn" onclick="startScanner()" disabled>📷 Start</button>
+    <button id="exitBtn" onclick="exitApp()">❌ Exit</button>
   </div>
 
   <div id="reader"></div>
-  <div id="status">Ready</div>
+  <div id="status">Enter User + Project ID</div>
 
 </div>
 
 <script>
 
 /* =========================
-   🔥 DEBUG ALERT (VERSION CHECK)
+   🔧 SET YOUR REAL API URL
 ========================= */
-alert("NEW VERSION LOADED");
-
-/* =========================
-   🔥 GLOBAL ERROR CATCHER
-========================= */
-window.onerror = function(msg, url, line) {
-  alert("JS ERROR: " + msg + " @ line " + line);
-};
-
-/* =========================
-   🔧 SET YOUR REAL URL
-========================= */
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "https://script.google.com/macros/s/REPLACE_WITH_YOUR_ID/exec";
 
 /* =========================
    STATE
@@ -146,14 +143,32 @@ if ("serviceWorker" in navigator) {
 /* =========================
    READY CHECK
 ========================= */
-user.oninput = projectId.oninput = () => {
-  startBtn.disabled = !(user.value.trim() && projectId.value.trim());
-};
+const userEl = document.getElementById("user");
+const projectEl = document.getElementById("projectId");
+const qtyEl = document.getElementById("qty");
+const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
+
+function checkReady() {
+  const ok = userEl.value.trim() && projectEl.value.trim();
+  startBtn.disabled = !ok;
+}
+
+userEl.addEventListener("input", checkReady);
+projectEl.addEventListener("input", checkReady);
 
 /* =========================
    START SCANNER
 ========================= */
 function startScanner() {
+
+  if (!userEl.value.trim() || !projectEl.value.trim()) {
+    alert("User and Project ID required");
+    return;
+  }
+
+  statusEl.innerText =
+    `Project: ${projectEl.value} | User: ${userEl.value}`;
 
   qr = new Html5Qrcode("reader");
 
@@ -170,7 +185,7 @@ function startScanner() {
 function onScanSuccess(text) {
 
   const now = Date.now();
-  const item = text.trim();
+  const item = (text || "").toString().trim();
 
   if (!item) return;
   if (scanLock) return;
@@ -189,7 +204,7 @@ function onScanSuccess(text) {
       startScanner();
     }, 1200);
 
-  });
+  }).catch(()=>{});
 }
 
 /* =========================
@@ -200,23 +215,34 @@ function sendToAPI(itemId) {
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(qty.value) +
-    "&projectId=" + encodeURIComponent(projectId.value) +
-    "&user=" + encodeURIComponent(user.value);
+    "&qty=" + encodeURIComponent(qtyEl.value || 1) +
+    "&projectId=" + encodeURIComponent(projectEl.value || "") +
+    "&user=" + encodeURIComponent(userEl.value || "");
 
-  alert("Sending: " + itemId); // 🔥 DEBUG
+  // 🔔 ALERT 1 (kept)
+  alert("Sending: " + itemId);
 
   fetch(url, {
     method: "GET",
     cache: "no-store"
   })
-  .then(res => res.text())
+  .then(res => res.json())
   .then(data => {
-    alert("Response received"); // 🔥 DEBUG
-    status.innerText = "✔ " + itemId;
+
+    if (data && data.success) {
+      // 🔔 ALERT 2 (kept)
+      alert("Response received");
+
+      statusEl.innerText = `✔ ${itemId}`;
+    } else {
+      alert("ERROR: " + (data.error || "Unknown error"));
+      statusEl.innerText = "❌ Failed";
+    }
+
   })
   .catch(err => {
-    alert("ERROR: " + err.message);
+    alert("NETWORK ERROR: " + err.message);
+    statusEl.innerText = "❌ Send failed";
   });
 }
 
@@ -225,16 +251,21 @@ function sendToAPI(itemId) {
 ========================= */
 function exitApp() {
 
-  if (qr) {
-    qr.stop().catch(()=>{});
-    qr.clear().catch(()=>{});
-  }
+  try {
+    if (qr) {
+      qr.stop().catch(()=>{});
+      qr.clear().catch(()=>{});
+    }
+  } catch (e) {}
 
   scanLock = false;
   lastScan = "";
+  lastScanTime = 0;
 
-  reader.innerHTML = "";
-  status.innerText = "Stopped";
+  document.getElementById("reader").innerHTML = "";
+
+  statusEl.innerText =
+    "Scanner stopped. You may close the app.";
 }
 
 </script>
