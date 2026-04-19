@@ -33,7 +33,6 @@
       text-align:left;
       max-width:420px;
       margin:0 auto 4px;
-      font-size:14px;
       font-weight:600;
     }
 
@@ -41,7 +40,6 @@
       width:100%;
       max-width:420px;
       padding:14px;
-      font-size:16px;
       margin-bottom:10px;
       border-radius:8px;
       border:1px solid #ccc;
@@ -51,9 +49,8 @@
       width:100%;
       max-width:420px;
       margin:auto;
-      border-radius:12px;
-      overflow:hidden;
       background:black;
+      border-radius:12px;
     }
 
     .button-row {
@@ -78,11 +75,12 @@
 
     #status {
       margin-top:20px;
-      padding:12px;
       background:white;
+      padding:12px;
       border-radius:8px;
       max-width:420px;
-      margin:auto;
+      margin-left:auto;
+      margin-right:auto;
     }
   </style>
 </head>
@@ -117,26 +115,21 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 let qr;
-let lock = false;
-let last = "";
-let lastTime = 0;
+let scanLock = false;
+let lastScan = "";
+let lastScanTime = 0;
 
-/* ================= PWA REGISTER ================= */
+/* ================= PWA ================= */
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("service-worker.js");
 }
 
-/* ================= READY CHECK ================= */
-document.getElementById("user").oninput =
-document.getElementById("projectId").oninput = check;
+/* ================= READY ================= */
+user.oninput = projectId.oninput = () => {
+  startBtn.disabled = !(user.value.trim() && projectId.value.trim());
+};
 
-function check() {
-  const u = user.value.trim();
-  const p = projectId.value.trim();
-  startBtn.disabled = !(u && p);
-}
-
-/* ================= START SCANNER ================= */
+/* ================= START ================= */
 function startScanner() {
 
   qr = new Html5Qrcode("reader");
@@ -144,48 +137,65 @@ function startScanner() {
   qr.start(
     { facingMode: "environment" },
     { fps: 15, qrbox: 250 },
-    onScan
+    onScanSuccess
   );
 }
 
 /* ================= SCAN ================= */
-function onScan(text) {
+function onScanSuccess(text) {
 
   const now = Date.now();
   const item = text.trim();
 
-  if (lock) return;
-  if (item === last && now - lastTime < 2000) return;
+  if (!item) return;
+  if (scanLock) return;
+  if (item === lastScan && (now - lastScanTime) < 2000) return;
 
-  lock = true;
-  last = item;
-  lastTime = now;
+  scanLock = true;
+  lastScan = item;
+  lastScanTime = now;
 
   qr.stop().then(() => {
 
-    send(item);
+    sendToAPI(item);
 
     setTimeout(() => {
-      lock = false;
+      scanLock = false;
       startScanner();
     }, 1200);
 
   });
 }
 
-/* ================= SEND ================= */
-function send(item) {
+/* ================= SEND (FIXED) ================= */
+function sendToAPI(itemId) {
 
-  const url =
-    API_URL +
-    "?itemId=" + encodeURIComponent(item) +
-    "&qty=" + qty.value +
-    "&projectId=" + projectId.value +
-    "&user=" + user.value;
+  const payload = {
+    itemId: itemId,
+    qty: Number(qty.value) || 1,
+    projectId: projectId.value.trim(),
+    user: user.value.trim()
+  };
 
-  new Image().src = url;
+  console.log("Sending:", payload);
 
-  status.innerText = "Scanned: " + item;
+  fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  })
+  .then(res => res.text())
+  .then(data => {
+    console.log("Response:", data);
+    status.innerText = "✔ " + itemId;
+  })
+  .catch(err => {
+    console.error(err);
+    status.innerText = "❌ Error sending scan";
+  });
 }
 
 /* ================= EXIT ================= */
@@ -196,11 +206,11 @@ function exitApp() {
     qr.clear().catch(()=>{});
   }
 
-  lock = false;
-  last = "";
+  scanLock = false;
+  lastScan = "";
 
   reader.innerHTML = "";
-  status.innerText = "Stopped (close tab or Home Screen app)";
+  status.innerText = "Scanner stopped";
 }
 
 </script>
