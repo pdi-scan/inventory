@@ -1,19 +1,24 @@
-const CACHE_NAME = "inventory-scanner-v1";
-
-const FILES = [
-  "./",
-  "./index.html",
-  "./manifest.json"
-];
+const CACHE_NAME = "scanner-v2";
 
 self.addEventListener("install", e => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(FILES))
+    caches.open(CACHE_NAME).then(cache => cache.addAll([
+      "./",
+      "./index.html",
+      "./manifest.json"
+    ]))
   );
 });
 
-self.addEventListener("fetch", e => {
-  e.respondWith(
-    caches.match(e.request).then(res => res || fetch(e.request))
+self.addEventListener("fetch", event => {
+
+  // 🔥 DO NOT CACHE APPS SCRIPT CALLS
+  if (event.request.url.includes("script.google.com")) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then(res => res || fetch(event.request))
   );
 });
