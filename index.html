@@ -94,15 +94,15 @@
 
 <div class="container">
 
-  <!-- Device/User -->
-  <label>Device/User</label>
+  <!-- USER -->
+  <label>Device / User</label>
   <input id="user" type="text" placeholder="Enter your name">
 
-  <!-- Project ID -->
+  <!-- PROJECT -->
   <label>Project ID</label>
   <input id="projectId" type="text" placeholder="Enter Project ID">
 
-  <!-- Qty -->
+  <!-- QTY -->
   <label>Qty</label>
   <input id="qty" type="number" min="1" value="1">
 
@@ -143,9 +143,6 @@ document.getElementById("user").addEventListener("input", function () {
   checkReady();
 });
 
-/* =========================
-   PROJECT CHECK
-========================= */
 document.getElementById("projectId").addEventListener("input", checkReady);
 
 function checkReady() {
@@ -205,7 +202,7 @@ function onScanSuccess(decodedText) {
 }
 
 /* =========================
-   SEND TO APPS SCRIPT
+   SEND TO BACKEND
 ========================= */
 function sendToAPI(itemId) {
 
@@ -224,7 +221,7 @@ function sendToAPI(itemId) {
   img.src = url;
 
   document.getElementById("status").innerHTML =
-    `<span class="ok">✔ ${itemId} (Qty: ${qty}) by ${user}</span>`;
+    `✔ ${itemId} (Qty: ${qty}) by ${user}`;
 }
 
 </script>
