@@ -90,6 +90,30 @@
       margin-right:auto;
       font-size:16px;
     }
+
+    /* 🔥 TOAST */
+    #toast {
+      visibility: hidden;
+      min-width: 250px;
+      background-color: #111827;
+      color: white;
+      text-align: center;
+      border-radius: 8px;
+      padding: 14px;
+      position: fixed;
+      left: 50%;
+      bottom: 30px;
+      transform: translateX(-50%);
+      font-size: 16px;
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    #toast.show {
+      visibility: visible;
+      opacity: 1;
+    }
   </style>
 </head>
 
@@ -118,12 +142,15 @@
 
 </div>
 
+<!-- 🔥 TOAST ELEMENT -->
+<div id="toast"></div>
+
 <script>
 
 /* =========================
    🔧 SET YOUR REAL API URL
 ========================= */
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "https://script.google.com/macros/s/REPLACE_WITH_YOUR_ID/exec";
 
 /* =========================
    STATE
@@ -141,7 +168,7 @@ if ("serviceWorker" in navigator) {
 }
 
 /* =========================
-   READY CHECK
+   ELEMENTS
 ========================= */
 const userEl = document.getElementById("user");
 const projectEl = document.getElementById("projectId");
@@ -149,13 +176,28 @@ const qtyEl = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
 const statusEl = document.getElementById("status");
 
+/* =========================
+   READY CHECK
+========================= */
 function checkReady() {
-  const ok = userEl.value.trim() && projectEl.value.trim();
-  startBtn.disabled = !ok;
+  startBtn.disabled = !(userEl.value.trim() && projectEl.value.trim());
 }
-
 userEl.addEventListener("input", checkReady);
 projectEl.addEventListener("input", checkReady);
+
+/* =========================
+   TOAST FUNCTION
+========================= */
+function showToast(message) {
+  const toast = document.getElementById("toast");
+
+  toast.innerText = message;
+  toast.classList.add("show");
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+  }, 2000);
+}
 
 /* =========================
    START SCANNER
@@ -219,9 +261,6 @@ function sendToAPI(itemId) {
     "&projectId=" + encodeURIComponent(projectEl.value || "") +
     "&user=" + encodeURIComponent(userEl.value || "");
 
-  // 🔔 ALERT 1 (kept)
-  alert("Sending: " + itemId);
-
   fetch(url, {
     method: "GET",
     cache: "no-store"
@@ -230,10 +269,12 @@ function sendToAPI(itemId) {
   .then(data => {
 
     if (data && data.success) {
-      // 🔔 ALERT 2 (kept)
-      alert("Response received");
+
+      showToast("✔ " + itemId);
+      navigator.vibrate(100);
 
       statusEl.innerText = `✔ ${itemId}`;
+
     } else {
       alert("ERROR: " + (data.error || "Unknown error"));
       statusEl.innerText = "❌ Failed";
