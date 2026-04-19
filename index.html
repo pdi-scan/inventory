@@ -56,20 +56,16 @@
     }
 
     button {
-      width: 100%;
-      max-width: 420px;
       padding: 16px;
       font-size: 18px;
-      margin-top: 10px;
       border: none;
       border-radius: 10px;
-      background: #2563eb;
       color: white;
       font-weight: bold;
     }
 
     button:disabled {
-      background: #9ca3af;
+      background: #9ca3af !important;
     }
 
     #status {
@@ -84,7 +80,6 @@
     }
 
     .ok { color: green; font-weight: bold; }
-    .error { color: red; font-weight: bold; }
   </style>
 </head>
 
@@ -106,9 +101,18 @@
   <label>Qty</label>
   <input id="qty" type="number" min="1" value="1">
 
-  <button id="startBtn" onclick="startScanner()" disabled>
-    📷 Start Scanner
-  </button>
+  <!-- BUTTONS -->
+  <div style="display:flex; gap:10px; max-width:420px; margin:auto;">
+
+    <button id="startBtn" onclick="startScanner()" style="flex:1; background:#2563eb;" disabled>
+      📷 Start
+    </button>
+
+    <button onclick="exitApp()" style="flex:1; background:#dc2626;">
+      ❌ Exit
+    </button>
+
+  </div>
 
   <div id="reader"></div>
 
@@ -122,7 +126,7 @@ const API_URL =
   "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 /* =========================
-   STATE (DOUBLE SCAN PROTECTION)
+   STATE (ANTI DOUBLE SCAN)
 ========================= */
 let html5QrCode;
 let scanLock = false;
@@ -130,7 +134,7 @@ let lastScan = "";
 let lastScanTime = 0;
 
 /* =========================
-   LOAD SAVED USER
+   LOAD USER
 ========================= */
 window.addEventListener("load", () => {
   const savedUser = localStorage.getItem("scan_user");
@@ -183,7 +187,7 @@ function startScanner() {
 }
 
 /* =========================
-   DOUBLE SCAN PREVENTION
+   SCAN LOGIC (ANTI DOUBLE SCAN)
 ========================= */
 function onScanSuccess(decodedText) {
 
@@ -192,10 +196,8 @@ function onScanSuccess(decodedText) {
 
   if (!itemId) return;
 
-  // 🔒 BLOCK 1: scan lock
   if (scanLock) return;
 
-  // 🔒 BLOCK 2: same scan within 2 sec
   if (itemId === lastScan && (now - lastScanTime) < 2000) return;
 
   scanLock = true;
@@ -235,6 +237,31 @@ function sendToAPI(itemId) {
 
   document.getElementById("status").innerHTML =
     `<span class="ok">✔ ${itemId} (Qty: ${qty}) by ${user}</span>`;
+}
+
+/* =========================
+   EXIT APP (SAFE STOP)
+========================= */
+function exitApp() {
+
+  try {
+    if (html5QrCode) {
+      html5QrCode.stop().then(() => {
+        html5QrCode.clear();
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  scanLock = false;
+  lastScan = "";
+  lastScanTime = 0;
+
+  document.getElementById("reader").innerHTML = "";
+
+  document.getElementById("status").innerText =
+    "Scanner stopped. You may close the tab.";
+
+  alert("Scanner exited. You can now close this tab.");
 }
 
 </script>
