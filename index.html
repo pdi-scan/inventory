@@ -91,7 +91,6 @@
       font-size:16px;
     }
 
-    /* 🔥 TOAST */
     #toast {
       visibility: hidden;
       min-width: 250px;
@@ -126,8 +125,8 @@
   <label>Device/User</label>
   <input id="user" placeholder="Enter name">
 
-  <label>Project ID</label>
-  <input id="projectId" placeholder="Project ID">
+  <label>PO</label>
+  <input id="po" placeholder="Enter PO">
 
   <label>Qty</label>
   <input id="qty" type="number" min="1" value="1">
@@ -138,90 +137,61 @@
   </div>
 
   <div id="reader"></div>
-  <div id="status">Enter User + Project ID</div>
+  <div id="status">Enter User + PO</div>
 
 </div>
 
-<!-- 🔊 AUDIO -->
 <audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
 
-<!-- 🔥 TOAST -->
 <div id="toast"></div>
 
 <script>
 
-/* =========================
-   🔧 SET YOUR REAL API URL
-========================= */
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "https://script.google.com/macros/s/REPLACE_WITH_YOUR_ID/exec";
 
-/* =========================
-   STATE
-========================= */
 let qr;
 let scanLock = false;
 let lastScan = "";
 let lastScanTime = 0;
 
-/* =========================
-   REGISTER SERVICE WORKER
-========================= */
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("service-worker.js");
 }
 
-/* =========================
-   ELEMENTS
-========================= */
 const userEl = document.getElementById("user");
-const projectEl = document.getElementById("projectId");
+const poEl = document.getElementById("po");
 const qtyEl = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
 const statusEl = document.getElementById("status");
 
-/* =========================
-   READY CHECK
-========================= */
 function checkReady() {
-  startBtn.disabled = !(userEl.value.trim() && projectEl.value.trim());
+  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
 }
 userEl.addEventListener("input", checkReady);
-projectEl.addEventListener("input", checkReady);
+poEl.addEventListener("input", checkReady);
 
-/* =========================
-   TOAST
-========================= */
 function showToast(message) {
   const toast = document.getElementById("toast");
   toast.innerText = message;
   toast.classList.add("show");
-
-  setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2000);
+  setTimeout(() => toast.classList.remove("show"), 2000);
 }
 
-/* =========================
-   SOUND
-========================= */
 function playBeep() {
   const audio = document.getElementById("beep");
   audio.currentTime = 0;
   audio.play().catch(()=>{});
 }
 
-/* =========================
-   START SCANNER
-========================= */
 function startScanner() {
 
-  if (!userEl.value.trim() || !projectEl.value.trim()) {
-    alert("User and Project ID required");
+  if (!userEl.value.trim() || !poEl.value.trim()) {
+    alert("User and PO required");
     return;
   }
 
   statusEl.innerText =
-    `Project: ${projectEl.value} | User: ${userEl.value}`;
+    `PO: ${poEl.value} | User: ${userEl.value}`;
 
   qr = new Html5Qrcode("reader");
 
@@ -232,9 +202,6 @@ function startScanner() {
   );
 }
 
-/* =========================
-   SCAN
-========================= */
 function onScanSuccess(text) {
 
   const now = Date.now();
@@ -260,16 +227,13 @@ function onScanSuccess(text) {
   }).catch(()=>{});
 }
 
-/* =========================
-   SEND TO API
-========================= */
 function sendToAPI(itemId) {
 
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
     "&qty=" + encodeURIComponent(qtyEl.value || 1) +
-    "&projectId=" + encodeURIComponent(projectEl.value || "") +
+    "&po=" + encodeURIComponent(poEl.value || "") +
     "&user=" + encodeURIComponent(userEl.value || "");
 
   fetch(url, {
@@ -303,9 +267,6 @@ function sendToAPI(itemId) {
   });
 }
 
-/* =========================
-   EXIT
-========================= */
 function exitApp() {
 
   try {
@@ -317,12 +278,10 @@ function exitApp() {
 
   scanLock = false;
   lastScan = "";
-  lastScanTime = 0;
 
   document.getElementById("reader").innerHTML = "";
 
-  statusEl.innerText =
-    "Scanner stopped. You may close the app.";
+  statusEl.innerText = "Scanner stopped";
 }
 
 </script>
