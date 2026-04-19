@@ -142,7 +142,10 @@
 
 </div>
 
-<!-- 🔥 TOAST ELEMENT -->
+<!-- 🔊 AUDIO -->
+<audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
+
+<!-- 🔥 TOAST -->
 <div id="toast"></div>
 
 <script>
@@ -150,7 +153,7 @@
 /* =========================
    🔧 SET YOUR REAL API URL
 ========================= */
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "https://script.google.com/macros/s/REPLACE_WITH_YOUR_ID/exec";
 
 /* =========================
    STATE
@@ -186,17 +189,25 @@ userEl.addEventListener("input", checkReady);
 projectEl.addEventListener("input", checkReady);
 
 /* =========================
-   TOAST FUNCTION
+   TOAST
 ========================= */
 function showToast(message) {
   const toast = document.getElementById("toast");
-
   toast.innerText = message;
   toast.classList.add("show");
 
   setTimeout(() => {
     toast.classList.remove("show");
   }, 2000);
+}
+
+/* =========================
+   SOUND
+========================= */
+function playBeep() {
+  const audio = document.getElementById("beep");
+  audio.currentTime = 0;
+  audio.play().catch(()=>{});
 }
 
 /* =========================
@@ -250,7 +261,7 @@ function onScanSuccess(text) {
 }
 
 /* =========================
-   SEND TO APPS SCRIPT
+   SEND TO API
 ========================= */
 function sendToAPI(itemId) {
 
@@ -271,7 +282,12 @@ function sendToAPI(itemId) {
     if (data && data.success) {
 
       showToast("✔ " + itemId);
-      navigator.vibrate(100);
+
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+
+      playBeep();
 
       statusEl.innerText = `✔ ${itemId}`;
 
