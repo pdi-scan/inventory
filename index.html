@@ -4,6 +4,10 @@
   <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111827">
+
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
@@ -22,82 +26,64 @@
       font-weight: bold;
     }
 
-    .container {
-      padding: 16px;
-    }
+    .container { padding: 16px; }
 
     label {
-      display: block;
-      text-align: left;
-      max-width: 420px;
-      margin: 0 auto 4px;
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
+      display:block;
+      text-align:left;
+      max-width:420px;
+      margin:0 auto 4px;
+      font-size:14px;
+      font-weight:600;
     }
 
     input {
-      width: 100%;
-      max-width: 420px;
-      padding: 14px;
-      font-size: 16px;
-      margin-bottom: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
+      width:100%;
+      max-width:420px;
+      padding:14px;
+      font-size:16px;
+      margin-bottom:10px;
+      border-radius:8px;
+      border:1px solid #ccc;
     }
 
     #reader {
-      width: 100%;
-      max-width: 420px;
-      margin: auto;
-      border-radius: 12px;
-      overflow: hidden;
-      background: black;
+      width:100%;
+      max-width:420px;
+      margin:auto;
+      border-radius:12px;
+      overflow:hidden;
+      background:black;
     }
 
-    /* 🔥 FIXED BUTTON LAYOUT (IMPORTANT) */
     .button-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      max-width: 420px;
-      margin: 10px auto 0;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      max-width:420px;
+      margin:10px auto;
     }
 
     button {
-      padding: 16px;
-      font-size: 18px;
-      border: none;
-      border-radius: 10px;
-      color: white;
-      font-weight: bold;
-      width: 100%;
+      padding:16px;
+      font-size:18px;
+      border:none;
+      border-radius:10px;
+      color:white;
+      font-weight:bold;
     }
 
-    #startBtn {
-      background: #2563eb;
-    }
-
-    #exitBtn {
-      background: #dc2626;
-    }
-
-    button:disabled {
-      background: #9ca3af !important;
-    }
+    #startBtn { background:#2563eb; }
+    #exitBtn { background:#dc2626; }
 
     #status {
-      margin-top: 20px;
-      padding: 12px;
-      background: white;
-      border-radius: 8px;
-      max-width: 420px;
-      margin-left: auto;
-      margin-right: auto;
-      font-size: 16px;
+      margin-top:20px;
+      padding:12px;
+      background:white;
+      border-radius:8px;
+      max-width:420px;
+      margin:auto;
     }
-
-    .ok { color: green; font-weight: bold; }
   </style>
 </head>
 
@@ -107,177 +93,114 @@
 
 <div class="container">
 
-  <!-- USER -->
-  <label>Device/User</label>
-  <input id="user" type="text" placeholder="Enter your name">
+  <label>User</label>
+  <input id="user" placeholder="Enter name">
 
-  <!-- PROJECT -->
   <label>Project ID</label>
-  <input id="projectId" type="text" placeholder="Enter Project ID">
+  <input id="projectId" placeholder="Project ID">
 
-  <!-- QTY -->
   <label>Qty</label>
-  <input id="qty" type="number" min="1" value="1">
+  <input id="qty" type="number" value="1">
 
-  <!-- BUTTONS (FIXED VISIBILITY) -->
   <div class="button-row">
-
-    <button id="startBtn" onclick="startScanner()" disabled>
-      📷 Start
-    </button>
-
-    <button id="exitBtn" onclick="exitApp()">
-      ❌ Exit
-    </button>
-
+    <button id="startBtn" onclick="startScanner()" disabled>Start</button>
+    <button id="exitBtn" onclick="exitApp()">Exit</button>
   </div>
 
   <div id="reader"></div>
-
-  <div id="status">Enter User + Project ID</div>
+  <div id="status">Ready</div>
 
 </div>
 
 <script>
 
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "https://script.google.com/macros/s/YOUR_ID/exec";
 
-/* =========================
-   STATE (ANTI DOUBLE SCAN)
-========================= */
-let html5QrCode;
-let scanLock = false;
-let lastScan = "";
-let lastScanTime = 0;
+let qr;
+let lock = false;
+let last = "";
+let lastTime = 0;
 
-/* =========================
-   LOAD USER
-========================= */
-window.addEventListener("load", () => {
-  const savedUser = localStorage.getItem("scan_user");
-  if (savedUser) {
-    document.getElementById("user").value = savedUser;
-  }
-  checkReady();
-});
-
-/* =========================
-   SAVE USER
-========================= */
-document.getElementById("user").addEventListener("input", function () {
-  localStorage.setItem("scan_user", this.value.trim());
-  checkReady();
-});
-
-document.getElementById("projectId").addEventListener("input", checkReady);
-
-function checkReady() {
-  const user = document.getElementById("user").value.trim();
-  const project = document.getElementById("projectId").value.trim();
-
-  document.getElementById("startBtn").disabled = !(user && project);
+/* ================= PWA REGISTER ================= */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
 }
 
-/* =========================
-   START SCANNER
-========================= */
+/* ================= READY CHECK ================= */
+document.getElementById("user").oninput =
+document.getElementById("projectId").oninput = check;
+
+function check() {
+  const u = user.value.trim();
+  const p = projectId.value.trim();
+  startBtn.disabled = !(u && p);
+}
+
+/* ================= START SCANNER ================= */
 function startScanner() {
 
-  const user = document.getElementById("user").value.trim();
-  const projectId = document.getElementById("projectId").value.trim();
+  qr = new Html5Qrcode("reader");
 
-  if (!user || !projectId) {
-    alert("User and Project ID required");
-    return;
-  }
-
-  document.getElementById("status").innerText =
-    `Project: ${projectId} | User: ${user}`;
-
-  html5QrCode = new Html5Qrcode("reader");
-
-  html5QrCode.start(
+  qr.start(
     { facingMode: "environment" },
     { fps: 15, qrbox: 250 },
-    onScanSuccess
+    onScan
   );
 }
 
-/* =========================
-   DOUBLE SCAN PREVENTION
-========================= */
-function onScanSuccess(decodedText) {
+/* ================= SCAN ================= */
+function onScan(text) {
 
   const now = Date.now();
-  const itemId = (decodedText || "").toString().trim();
+  const item = text.trim();
 
-  if (!itemId) return;
-  if (scanLock) return;
-  if (itemId === lastScan && (now - lastScanTime) < 2000) return;
+  if (lock) return;
+  if (item === last && now - lastTime < 2000) return;
 
-  scanLock = true;
-  lastScan = itemId;
-  lastScanTime = now;
+  lock = true;
+  last = item;
+  lastTime = now;
 
-  html5QrCode.stop().then(() => {
+  qr.stop().then(() => {
 
-    sendToAPI(itemId);
+    send(item);
 
     setTimeout(() => {
-      scanLock = false;
+      lock = false;
       startScanner();
-    }, 1500);
+    }, 1200);
 
   });
 }
 
-/* =========================
-   SEND TO BACKEND
-========================= */
-function sendToAPI(itemId) {
-
-  const user = document.getElementById("user").value.trim();
-  const projectId = document.getElementById("projectId").value.trim();
-  const qty = parseInt(document.getElementById("qty").value, 10) || 1;
+/* ================= SEND ================= */
+function send(item) {
 
   const url =
     API_URL +
-    "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(qty) +
-    "&projectId=" + encodeURIComponent(projectId) +
-    "&user=" + encodeURIComponent(user);
+    "?itemId=" + encodeURIComponent(item) +
+    "&qty=" + qty.value +
+    "&projectId=" + projectId.value +
+    "&user=" + user.value;
 
-  const img = new Image();
-  img.src = url;
+  new Image().src = url;
 
-  document.getElementById("status").innerHTML =
-    `<span class="ok">✔ ${itemId} (Qty: ${qty}) by ${user}</span>`;
+  status.innerText = "Scanned: " + item;
 }
 
-/* =========================
-   EXIT APP
-========================= */
+/* ================= EXIT ================= */
 function exitApp() {
 
-  try {
-    if (html5QrCode) {
-      html5QrCode.stop().then(() => {
-        html5QrCode.clear();
-      }).catch(() => {});
-    }
-  } catch (e) {}
+  if (qr) {
+    qr.stop().catch(()=>{});
+    qr.clear().catch(()=>{});
+  }
 
-  scanLock = false;
-  lastScan = "";
-  lastScanTime = 0;
+  lock = false;
+  last = "";
 
-  document.getElementById("reader").innerHTML = "";
-
-  document.getElementById("status").innerText =
-    "Scanner stopped. You may close the tab.";
-
-  alert("Scanner exited. You can now close this tab.");
+  reader.innerHTML = "";
+  status.innerText = "Stopped (close tab or Home Screen app)";
 }
 
 </script>
