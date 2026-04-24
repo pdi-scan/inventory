@@ -1,49 +1,29 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="utf-8" />
   <title>Inventory Scanner</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <!-- Optional PWA bits -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#111827">
 
+  <!-- html5-qrcode -->
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
-    body { font-family:-apple-system,Arial; margin:0; background:#f3f4f6; text-align:center; }
+    body { font-family:-apple-system, Arial, sans-serif; margin:0; background:#f3f4f6; text-align:center; }
     header { background:#111827; color:white; padding:16px; font-size:20px; }
 
     .container { padding:16px; }
 
-    label { display:block; text-align:left; max-width:420px; margin:0 auto 4px; font-weight:600; }
+    label { display:block; text-align:left; max-width:420px; margin:0 auto 4px; font-weight:700; }
 
     input {
       width:100%; max-width:420px; padding:14px;
-      margin-bottom:10px; border-radius:8px; border:1px solid #ccc;
-      box-sizing:border-box;
-    }
-
-    #reader {
-      width:100%;
-      max-width:420px;
-      margin:10px auto 0;
-      background:black;
-      border-radius:12px;
-      overflow:hidden;
-      position:relative;
-    }
-
-    #focusRing {
-      position:absolute;
-      width:80px;
-      height:80px;
-      border:3px solid yellow;
-      border-radius:50%;
-      pointer-events:none;
-      transform:translate(-50%, -50%);
-      opacity:0;
-      transition:0.3s;
-      z-index:10;
+      margin:0 auto 10px; border-radius:10px; border:1px solid #cbd5e1;
+      box-sizing:border-box; font-size:16px; background:white;
     }
 
     .button-row {
@@ -55,27 +35,49 @@
     }
 
     button {
-      padding:16px;
-      font-size:18px;
+      padding:14px;
+      font-size:16px;
       border:none;
-      border-radius:10px;
+      border-radius:12px;
       color:white;
-      font-weight:bold;
+      font-weight:800;
       cursor:pointer;
     }
-
-    button:disabled { opacity:0.55; cursor:not-allowed; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
 
     #startBtn { background:#2563eb; }
     #exitBtn  { background:#dc2626; }
 
-    /* Torch toggle (hidden if unsupported) */
     #torchBtn {
-      max-width:420px;
       width:100%;
-      margin:10px auto 0;
+      max-width:420px;
+      margin:0 auto 10px;
       background:#111827;
       display:none;
+    }
+
+    #reader {
+      width:100%;
+      max-width:420px;
+      margin:0 auto;
+      background:black;
+      border-radius:14px;
+      overflow:hidden;
+      position:relative;
+      min-height:280px;
+    }
+
+    #focusRing {
+      position:absolute;
+      width:80px;
+      height:80px;
+      border:3px solid #facc15;
+      border-radius:50%;
+      pointer-events:none;
+      transform:translate(-50%, -50%);
+      opacity:0;
+      transition:0.25s;
+      z-index:10;
     }
 
     #toast {
@@ -86,11 +88,12 @@
       transform:translateX(-50%);
       background:#111827;
       color:white;
-      padding:14px;
-      border-radius:8px;
+      padding:12px 14px;
+      border-radius:10px;
       opacity:0;
-      transition:0.3s;
+      transition:0.25s;
       z-index:9998;
+      max-width:92vw;
     }
     #toast.show { visibility:visible; opacity:1; }
 
@@ -114,7 +117,7 @@
     }
     #confirmTitle{
       font-size:18px;
-      font-weight:800;
+      font-weight:900;
       margin-bottom:10px;
     }
     #confirmValue{
@@ -130,24 +133,40 @@
       grid-template-columns:1fr 1fr;
       gap:10px;
     }
-    #confirmYesBtn{ background:#16a34a; color:white; border:none; border-radius:10px; padding:14px; font-size:16px; font-weight:800; }
-    #confirmNoBtn { background:#dc2626; color:white; border:none; border-radius:10px; padding:14px; font-size:16px; font-weight:800; }
+    #confirmYesBtn{ background:#16a34a; color:white; border:none; border-radius:12px; padding:14px; font-size:16px; font-weight:900; }
+    #confirmNoBtn { background:#dc2626; color:white; border:none; border-radius:12px; padding:14px; font-size:16px; font-weight:900; }
+
+    /* Diagnostics box */
+    #diag {
+      max-width:420px;
+      margin:10px auto 0;
+      text-align:left;
+      background:#fff;
+      border:1px solid #e2e8f0;
+      border-radius:12px;
+      padding:12px;
+      display:none;
+      font-size:13px;
+      color:#0f172a;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
   </style>
 </head>
 
 <body>
-<header>📦 PDI Scanner 2</header>
+<header>📦 Inventory Scanner</header>
 
 <div class="container">
 
   <label>Device/User</label>
-  <input id="user" autocomplete="off">
+  <input id="user" autocomplete="off" />
 
   <label>PO</label>
-  <input id="po" autocomplete="off">
+  <input id="po" autocomplete="off" />
 
   <label>Qty</label>
-  <input id="qty" type="number" value="1" min="1" step="1">
+  <input id="qty" type="number" value="1" min="1" step="1" />
 
   <div class="button-row">
     <button id="startBtn" onclick="startScanner()" disabled>Start</button>
@@ -160,6 +179,7 @@
     <div id="focusRing"></div>
   </div>
 
+  <div id="diag"></div>
 </div>
 
 <audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
@@ -197,19 +217,21 @@ let isPaused = false;
 let torchSupported = false;
 let torchOn = false;
 
-const userEl  = document.getElementById("user");
-const poEl    = document.getElementById("po");
-const qtyEl   = document.getElementById("qty");
-const startBtn= document.getElementById("startBtn");
-const reader  = document.getElementById("reader");
-const ring    = document.getElementById("focusRing");
+const userEl   = document.getElementById("user");
+const poEl     = document.getElementById("po");
+const qtyEl    = document.getElementById("qty");
+const startBtn = document.getElementById("startBtn");
+
+const reader   = document.getElementById("reader");
+const ring     = document.getElementById("focusRing");
 
 const torchBtn = document.getElementById("torchBtn");
+const diagEl   = document.getElementById("diag");
 
-const confirmModal = document.getElementById("confirmModal");
-const confirmValue = document.getElementById("confirmValue");
-const confirmYesBtn= document.getElementById("confirmYesBtn");
-const confirmNoBtn = document.getElementById("confirmNoBtn");
+const confirmModal  = document.getElementById("confirmModal");
+const confirmValue  = document.getElementById("confirmValue");
+const confirmYesBtn = document.getElementById("confirmYesBtn");
+const confirmNoBtn  = document.getElementById("confirmNoBtn");
 
 /** Enable Start only when required fields present */
 userEl.oninput = poEl.oninput = () => {
@@ -223,7 +245,17 @@ function showToast(msg){
   const t = document.getElementById("toast");
   t.innerText = msg;
   t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2000);
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function showDiag(text) {
+  diagEl.style.display = "block";
+  diagEl.textContent = text;
+}
+
+function clearDiag() {
+  diagEl.style.display = "none";
+  diagEl.textContent = "";
 }
 
 function beep(){
@@ -244,7 +276,9 @@ function closeConfirm() {
 
 /** =========================
  *  QRBOX (dynamic sizing)
- *  ========================= */
+ *  =========================
+ * The library supports qrbox as a function that receives viewfinder size. [3](https://stackoverflow.com/questions/61649343/switching-facingmode-with-applyconstraints-not-currently-supported-media-stream)
+ */
 function qrboxSizing(viewfinderWidth, viewfinderHeight) {
   const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
   const size = Math.floor(minEdge * 0.65); // 65% of smaller edge
@@ -252,59 +286,106 @@ function qrboxSizing(viewfinderWidth, viewfinderHeight) {
 }
 
 /** =========================
- *  START / STOP
- *  ========================= */
-async function startScanner(){
+ *  START / STOP with fallbacks
+ *  =========================
+ * getUserMedia requires secure context (HTTPS/localhost). [1](https://stackoverflow.com/questions/78523966/need-help-setting-camera-zoom-level-using-html5qrcode-in-react-js)
+ * Html5Qrcode.start accepts camera id OR MediaTrackConstraints. [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
+ */
+async function startScanner() {
+  clearDiag();
+
+  // Secure context check (common reason for “camera failed”). [1](https://stackoverflow.com/questions/78523966/need-help-setting-camera-zoom-level-using-html5qrcode-in-react-js)
+  const isLocalhost = ["localhost", "127.0.0.1"].includes(location.hostname);
+  if (location.protocol !== "https:" && !isLocalhost) {
+    showDiag(
+      "Camera access requires HTTPS (or localhost).\n\n" +
+      `Current origin: ${location.origin}\n\n` +
+      "Fix: host this page on https:// (or test on http://localhost)."
+    );
+    alert("Camera requires HTTPS (or localhost).");
+    return;
+  }
+
   if (!userEl.value.trim() || !poEl.value.trim()) {
     alert("User and PO required");
     return;
   }
 
-  // Create once and reuse
+  // Create once and reuse. [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
   if (!qr) {
     qr = new Html5Qrcode("reader", {
+      // Experimental native BarcodeDetector can improve performance when supported. [4](https://github.com/mebjas/html5-qrcode/issues/761)
       experimentalFeatures: { useBarCodeDetectorIfSupported: true }
     });
   }
 
-  // If already running/paused, don't start again
-  try {
-    const state = qr.getState?.();
-    // 2 = SCANNING, 3 = PAUSED in some builds; but we just avoid duplicate starts
-    if (state && state !== 1) { // 1 is NOT_STARTED in many versions
-      // if paused, resume
-      if (typeof qr.resume === "function" && isPaused) {
-        await resumeScanner();
-      }
-      return;
-    }
-  } catch(e){}
-
-  const constraints = {
-    facingMode: "environment",
-    width:  { ideal: 1920 },
-    height: { ideal: 1080 }
-  };
+  // If already running/paused, don't create duplicate starts
+  // Safely stop any previous run before starting
+  try { await qr.stop(); } catch(e) {}
 
   scanLock = false;
   pendingScanText = null;
+  isPaused = false;
 
-  qr.start(
-    constraints,
+  const scanConfig = {
+    fps: 12,
+    qrbox: qrboxSizing,
+    aspectRatio: 1.0,
+    formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+  };
+
+  // Try high-res first (ideal), then simpler constraints.
+  const attemptConstraints = [
     {
-      fps: 12,
-      qrbox: qrboxSizing,
-      aspectRatio: 1.0,
-      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+      label: "Back camera + ideal 1080p",
+      cam: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
     },
-    onScanSuccess,
-    () => {} // ignore scan failures
-  )
-  .then(enableCameraTuning)
-  .catch(err => {
-    console.error(err);
-    alert("Camera failed. Check permissions.");
-  });
+    {
+      label: "Back camera (no resolution constraints)",
+      cam: { facingMode: "environment" }
+    }
+  ];
+
+  // Final fallback: pick first camera by device id. [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
+  let cameras = [];
+  try {
+    cameras = await Html5Qrcode.getCameras();
+  } catch(e) {}
+
+  if (cameras && cameras.length) {
+    attemptConstraints.push({
+      label: "First camera by deviceId",
+      cam: cameras[0].id
+    });
+  }
+
+  let lastErr = null;
+  for (const attempt of attemptConstraints) {
+    try {
+      console.log("Starting camera attempt:", attempt.label, attempt.cam);
+      await qr.start(attempt.cam, scanConfig, onScanSuccess, () => {});
+      await enableCameraTuning();
+      showToast("Camera started");
+      return;
+    } catch (err) {
+      console.warn("Start failed:", attempt.label, err);
+      lastErr = err;
+    }
+  }
+
+  // If all attempts failed, show real error name/message
+  const errName = lastErr?.name || "Error";
+  const errMsg  = lastErr?.message || String(lastErr || "");
+  showDiag(
+    "Camera start failed after multiple attempts.\n\n" +
+    `${errName}: ${errMsg}\n\n` +
+    "Common causes:\n" +
+    "- Permission denied (browser/site settings)\n" +
+    "- Another app is using the camera\n" +
+    "- In-app browser limitations (try opening in Safari/Chrome)\n" +
+    "- Constraints not satisfiable\n"
+  );
+  alert(`Camera failed.\n\n${errName}: ${errMsg}`);
 }
 
 async function exitApp(){
@@ -315,32 +396,33 @@ async function exitApp(){
   torchOn = false;
   torchBtn.style.display = "none";
 
-  if(qr){
+  if (qr) {
     try { await qr.stop(); } catch(e){}
-    try { await qr.clear(); } catch(e){}
+    try { await qr.clear(); } catch(e){} // clear() exists in Html5Qrcode API. [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
   }
 }
 
 /** =========================
  *  PAUSE / RESUME (scan -> pause -> confirm)
- *  ========================= */
+ *  =========================
+ * Html5Qrcode exposes pause(shouldPauseVideo?) and resume(). [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
+ */
 async function pauseScanner() {
   if (!qr) return;
 
-  // Prefer pause(true) to freeze video frame
   if (typeof qr.pause === "function") {
     try {
-      qr.pause(true);
+      qr.pause(true); // freeze video frame for confirmation. [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
       isPaused = true;
       return;
-    } catch(e) {}
+    } catch (e) {}
   }
 
-  // Fallback
+  // Fallback if pause isn't available in your build: stop (less ideal).
   try {
     await qr.stop();
     isPaused = true;
-  } catch(e){}
+  } catch (e) {}
 }
 
 async function resumeScanner() {
@@ -348,49 +430,45 @@ async function resumeScanner() {
 
   if (typeof qr.resume === "function") {
     try {
-      qr.resume();
+      qr.resume(); // resumes scanning (and video if paused). [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
       isPaused = false;
       return;
-    } catch(e) {}
+    } catch (e) {}
   }
 
-  // Fallback: restart
+  // Fallback: restart the camera
   isPaused = false;
   startScanner();
 }
 
 /** =========================
- *  CAMERA TUNING (zoom/focus/torch)
- *  ========================= */
+ *  CAMERA TUNING (zoom/torch/focus)
+ *  =========================
+ * Html5Qrcode provides getRunningTrackCapabilities + applyVideoConstraints. [2](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
+ */
 async function enableCameraTuning(){
   try {
     const caps = await qr.getRunningTrackCapabilities();
 
-    // Torch support (show button only if supported)
     torchSupported = !!caps.torch;
     torchBtn.style.display = torchSupported ? "block" : "none";
 
     const advanced = [];
 
-    // Prefer continuous focus where supported
-    if (caps.focusMode) {
-      advanced.push({ focusMode: "continuous" });
-    }
-
-    // Prefer continuous exposure where supported
-    if (caps.exposureMode) {
-      advanced.push({ exposureMode: "continuous" });
-    }
-
-    // Zoom (helpful for small QR codes)
+    // Zoom helps small QR codes when supported.
     if (caps.zoom) {
       const targetZoom = Math.min(3, caps.zoom.max);
       advanced.push({ zoom: targetZoom });
     }
 
+    // Try to keep torch state consistent if available
     if (torchSupported) {
       advanced.push({ torch: torchOn });
     }
+
+    // focusMode/exposureMode support varies by browser/device; apply if supported.
+    if (caps.focusMode) advanced.push({ focusMode: "continuous" });
+    if (caps.exposureMode) advanced.push({ exposureMode: "continuous" });
 
     if (advanced.length) {
       await qr.applyVideoConstraints({ advanced });
@@ -407,14 +485,14 @@ async function toggleTorch(){
   try {
     await qr.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
     showToast(torchOn ? "Torch ON" : "Torch OFF");
-  } catch(e){
-    showToast("Torch not supported");
+  } catch(e) {
     torchOn = false;
+    showToast("Torch not supported");
   }
 }
 
 /** =========================
- *  TAP TO SHOW FOCUS RING (optional)
+ *  TAP FEEDBACK (focus ring)
  *  ========================= */
 reader.addEventListener("click", async (e) => {
   const rect = reader.getBoundingClientRect();
@@ -424,9 +502,9 @@ reader.addEventListener("click", async (e) => {
   ring.style.left = x + "px";
   ring.style.top = y + "px";
   ring.style.opacity = 1;
-  setTimeout(() => ring.style.opacity = 0, 400);
+  setTimeout(() => ring.style.opacity = 0, 350);
 
-  // Best effort: request continuous focus again
+  // Best-effort focusMode re-apply (supported varies)
   try {
     if (qr && !isPaused) {
       await qr.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] });
@@ -437,7 +515,7 @@ reader.addEventListener("click", async (e) => {
 /** =========================
  *  SCAN CALLBACK (pause -> confirm)
  *  ========================= */
-async function onScanSuccess(decodedText, decodedResult){
+async function onScanSuccess(decodedText){
   const text = decodedText;
   const now = Date.now();
 
@@ -452,7 +530,7 @@ async function onScanSuccess(decodedText, decodedResult){
   openConfirm(text);
 }
 
-/** Confirm / Rescan */
+/** Confirm / Rescan buttons */
 confirmYesBtn.addEventListener("click", async () => {
   if (!pendingScanText) return;
 
@@ -462,7 +540,7 @@ confirmYesBtn.addEventListener("click", async () => {
 
   await send(toSend);
 
-  // Cooldown so they don't instantly re-scan the same code
+  // Cooldown so they don’t instantly re-scan the same label
   setTimeout(async () => {
     scanLock = false;
     await resumeScanner();
@@ -503,6 +581,5 @@ async function send(itemId){
   }
 }
 </script>
-
 </body>
 </html>
