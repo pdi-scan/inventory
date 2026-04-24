@@ -71,15 +71,15 @@
 
 <body>
 
-<header>📦 PDI Scanner v20260423</header>
+<header>📦 PDI Scanner</header>
 
 <div class="container">
 
   <label>Device/User</label>
-  <input id="user">
+  <input id="user" placeholder="Enter name">
 
   <label>PO</label>
-  <input id="po">
+  <input id="po" placeholder="Enter PO">
 
   <label>Qty</label>
   <input id="qty" type="number" value="1">
@@ -108,7 +108,7 @@ const qtyEl = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
 
 userEl.oninput = poEl.oninput = () => {
-  startBtn.disabled = !(userEl.value && poEl.value);
+  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
 };
 
 /* TOAST */
@@ -126,27 +126,32 @@ function beep(){
   a.play().catch(()=>{});
 }
 
-/* START SCANNER (🔥 IMPROVED) */
+/* START SCANNER (SAFE + OPTIMIZED) */
 function startScanner(){
+
+  if (!userEl.value.trim() || !poEl.value.trim()) {
+    alert("User and PO required");
+    return;
+  }
 
   qr = new Html5Qrcode("reader");
 
   qr.start(
+    { facingMode: { exact: "environment" } }, // 🔥 reliable back camera
     {
-      facingMode: "environment",
-      advanced: [{ zoom: 2 }] // 🔥 zoom hint (device dependent)
-    },
-    {
-      fps: 25, // 🔥 higher scan rate
-      qrbox: { width: 180, height: 180 }, // 🔥 smaller box = better for small QR
+      fps: 20,
+      qrbox: { width: 180, height: 180 },
       aspectRatio: 1.0,
-
       formatsToSupport: [
-        Html5QrcodeSupportedFormats.QR_CODE // 🔥 QR only = faster + more accurate
+        Html5QrcodeSupportedFormats.QR_CODE
       ]
     },
-    onScan
-  );
+    onScan,
+    (err) => console.log("Scan error:", err)
+  ).catch(err => {
+    console.error("Camera start failed:", err);
+    alert("Camera failed. Check permissions or reload.");
+  });
 }
 
 /* SCAN */
@@ -193,7 +198,7 @@ function send(itemId){
         alert(d.error);
       }
     })
-    .catch(e=>alert(e.message));
+    .catch(e=>alert("Network error: " + e.message));
 }
 
 /* EXIT */
