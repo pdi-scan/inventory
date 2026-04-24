@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>PDI Scanner</title>
+  <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="manifest" href="manifest.json">
@@ -20,12 +20,13 @@
     input {
       width:100%; max-width:420px; padding:14px;
       margin-bottom:10px; border-radius:8px; border:1px solid #ccc;
+      box-sizing:border-box;
     }
 
     #reader {
       width:100%;
       max-width:420px;
-      margin:auto;
+      margin:10px auto 0;
       background:black;
       border-radius:12px;
       overflow:hidden;
@@ -42,6 +43,7 @@
       transform:translate(-50%, -50%);
       opacity:0;
       transition:0.3s;
+      z-index:10;
     }
 
     .button-row {
@@ -59,10 +61,22 @@
       border-radius:10px;
       color:white;
       font-weight:bold;
+      cursor:pointer;
     }
+
+    button:disabled { opacity:0.55; cursor:not-allowed; }
 
     #startBtn { background:#2563eb; }
     #exitBtn  { background:#dc2626; }
+
+    /* Torch toggle (hidden if unsupported) */
+    #torchBtn {
+      max-width:420px;
+      width:100%;
+      margin:10px auto 0;
+      background:#111827;
+      display:none;
+    }
 
     #toast {
       visibility:hidden;
@@ -76,31 +90,71 @@
       border-radius:8px;
       opacity:0;
       transition:0.3s;
+      z-index:9998;
     }
-
     #toast.show { visibility:visible; opacity:1; }
+
+    /* Confirm modal */
+    #confirmModal{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+    }
+    #confirmCard{
+      width:min(420px, 92vw);
+      background:white;
+      border-radius:14px;
+      padding:18px;
+      text-align:left;
+      box-shadow:0 12px 40px rgba(0,0,0,0.35);
+    }
+    #confirmTitle{
+      font-size:18px;
+      font-weight:800;
+      margin-bottom:10px;
+    }
+    #confirmValue{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background:#f3f4f6;
+      padding:12px;
+      border-radius:10px;
+      word-break:break-word;
+      margin-bottom:14px;
+    }
+    #confirmActions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    #confirmYesBtn{ background:#16a34a; color:white; border:none; border-radius:10px; padding:14px; font-size:16px; font-weight:800; }
+    #confirmNoBtn { background:#dc2626; color:white; border:none; border-radius:10px; padding:14px; font-size:16px; font-weight:800; }
   </style>
 </head>
 
 <body>
-
-<header>📦 PDI Scanner v20260423</header>
+<header>📦 PDI Scanner 2</header>
 
 <div class="container">
 
   <label>Device/User</label>
-  <input id="user">
+  <input id="user" autocomplete="off">
 
   <label>PO</label>
-  <input id="po">
+  <input id="po" autocomplete="off">
 
   <label>Qty</label>
-  <input id="qty" type="number" value="1">
+  <input id="qty" type="number" value="1" min="1" step="1">
 
   <div class="button-row">
     <button id="startBtn" onclick="startScanner()" disabled>Start</button>
-    <button onclick="exitApp()">Exit</button>
+    <button id="exitBtn" onclick="exitApp()">Exit</button>
   </div>
+
+  <button id="torchBtn" type="button" onclick="toggleTorch()">🔦 Torch</button>
 
   <div id="reader">
     <div id="focusRing"></div>
@@ -111,80 +165,258 @@
 <audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
 <div id="toast"></div>
 
-<script>
+<!-- Confirm Modal -->
+<div id="confirmModal" aria-modal="true" role="dialog">
+  <div id="confirmCard">
+    <div id="confirmTitle">Confirm Scan</div>
+    <div id="confirmValue"></div>
+    <div id="confirmActions">
+      <button id="confirmYesBtn" type="button">Confirm</button>
+      <button id="confirmNoBtn" type="button">Rescan</button>
+    </div>
+  </div>
+</div>
 
+<script>
+/** =========================
+ *  CONFIG
+ *  ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
-let qr, scanLock=false, lastScan="", lastTime=0;
+/** =========================
+ *  STATE
+ *  ========================= */
+let qr = null;
+let scanLock = false;
+let lastScan = "";
+let lastTime = 0;
 
-const userEl = document.getElementById("user");
-const poEl = document.getElementById("po");
-const qtyEl = document.getElementById("qty");
-const startBtn = document.getElementById("startBtn");
-const reader = document.getElementById("reader");
-const ring = document.getElementById("focusRing");
+let pendingScanText = null;
+let isPaused = false;
 
+let torchSupported = false;
+let torchOn = false;
+
+const userEl  = document.getElementById("user");
+const poEl    = document.getElementById("po");
+const qtyEl   = document.getElementById("qty");
+const startBtn= document.getElementById("startBtn");
+const reader  = document.getElementById("reader");
+const ring    = document.getElementById("focusRing");
+
+const torchBtn = document.getElementById("torchBtn");
+
+const confirmModal = document.getElementById("confirmModal");
+const confirmValue = document.getElementById("confirmValue");
+const confirmYesBtn= document.getElementById("confirmYesBtn");
+const confirmNoBtn = document.getElementById("confirmNoBtn");
+
+/** Enable Start only when required fields present */
 userEl.oninput = poEl.oninput = () => {
   startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
 };
 
-/* TOAST */
+/** =========================
+ *  UI HELPERS
+ *  ========================= */
 function showToast(msg){
-  const t=document.getElementById("toast");
-  t.innerText=msg;
+  const t = document.getElementById("toast");
+  t.innerText = msg;
   t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"),2000);
+  setTimeout(() => t.classList.remove("show"), 2000);
 }
 
-/* SOUND */
 function beep(){
-  const a=document.getElementById("beep");
-  a.currentTime=0;
+  const a = document.getElementById("beep");
+  a.currentTime = 0;
   a.play().catch(()=>{});
 }
 
-/* START SCANNER */
-function startScanner(){
+function openConfirm(text) {
+  pendingScanText = text;
+  confirmValue.textContent = text;
+  confirmModal.style.display = "flex";
+}
 
+function closeConfirm() {
+  confirmModal.style.display = "none";
+}
+
+/** =========================
+ *  QRBOX (dynamic sizing)
+ *  ========================= */
+function qrboxSizing(viewfinderWidth, viewfinderHeight) {
+  const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+  const size = Math.floor(minEdge * 0.65); // 65% of smaller edge
+  return { width: size, height: size };
+}
+
+/** =========================
+ *  START / STOP
+ *  ========================= */
+async function startScanner(){
   if (!userEl.value.trim() || !poEl.value.trim()) {
     alert("User and PO required");
     return;
   }
 
-  qr = new Html5Qrcode("reader");
+  // Create once and reuse
+  if (!qr) {
+    qr = new Html5Qrcode("reader", {
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    });
+  }
+
+  // If already running/paused, don't start again
+  try {
+    const state = qr.getState?.();
+    // 2 = SCANNING, 3 = PAUSED in some builds; but we just avoid duplicate starts
+    if (state && state !== 1) { // 1 is NOT_STARTED in many versions
+      // if paused, resume
+      if (typeof qr.resume === "function" && isPaused) {
+        await resumeScanner();
+      }
+      return;
+    }
+  } catch(e){}
+
+  const constraints = {
+    facingMode: "environment",
+    width:  { ideal: 1920 },
+    height: { ideal: 1080 }
+  };
+
+  scanLock = false;
+  pendingScanText = null;
 
   qr.start(
-    { facingMode: { exact: "environment" } },
+    constraints,
     {
-      fps: 25,
-      qrbox: { width: 140, height: 140 }, // 🔥 better for small QR
+      fps: 12,
+      qrbox: qrboxSizing,
       aspectRatio: 1.0,
       formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
     },
-    onScan
+    onScanSuccess,
+    () => {} // ignore scan failures
   )
-  .then(enableZoom)
+  .then(enableCameraTuning)
   .catch(err => {
     console.error(err);
     alert("Camera failed. Check permissions.");
   });
 }
 
-/* SAFE ZOOM AFTER START */
-async function enableZoom(){
+async function exitApp(){
+  closeConfirm();
+  pendingScanText = null;
+  scanLock = false;
+  isPaused = false;
+  torchOn = false;
+  torchBtn.style.display = "none";
+
+  if(qr){
+    try { await qr.stop(); } catch(e){}
+    try { await qr.clear(); } catch(e){}
+  }
+}
+
+/** =========================
+ *  PAUSE / RESUME (scan -> pause -> confirm)
+ *  ========================= */
+async function pauseScanner() {
+  if (!qr) return;
+
+  // Prefer pause(true) to freeze video frame
+  if (typeof qr.pause === "function") {
+    try {
+      qr.pause(true);
+      isPaused = true;
+      return;
+    } catch(e) {}
+  }
+
+  // Fallback
   try {
-    const caps = await qr.getRunningTrackCapabilities();
-    if (caps.zoom) {
-      await qr.applyVideoConstraints({
-        advanced: [{ zoom: Math.min(2, caps.zoom.max) }]
-      });
-    }
+    await qr.stop();
+    isPaused = true;
   } catch(e){}
 }
 
-/* TAP TO FOCUS */
-reader.addEventListener("click", async (e) => {
+async function resumeScanner() {
+  if (!qr) return;
 
+  if (typeof qr.resume === "function") {
+    try {
+      qr.resume();
+      isPaused = false;
+      return;
+    } catch(e) {}
+  }
+
+  // Fallback: restart
+  isPaused = false;
+  startScanner();
+}
+
+/** =========================
+ *  CAMERA TUNING (zoom/focus/torch)
+ *  ========================= */
+async function enableCameraTuning(){
+  try {
+    const caps = await qr.getRunningTrackCapabilities();
+
+    // Torch support (show button only if supported)
+    torchSupported = !!caps.torch;
+    torchBtn.style.display = torchSupported ? "block" : "none";
+
+    const advanced = [];
+
+    // Prefer continuous focus where supported
+    if (caps.focusMode) {
+      advanced.push({ focusMode: "continuous" });
+    }
+
+    // Prefer continuous exposure where supported
+    if (caps.exposureMode) {
+      advanced.push({ exposureMode: "continuous" });
+    }
+
+    // Zoom (helpful for small QR codes)
+    if (caps.zoom) {
+      const targetZoom = Math.min(3, caps.zoom.max);
+      advanced.push({ zoom: targetZoom });
+    }
+
+    if (torchSupported) {
+      advanced.push({ torch: torchOn });
+    }
+
+    if (advanced.length) {
+      await qr.applyVideoConstraints({ advanced });
+    }
+  } catch(e){
+    // ignore unsupported capabilities
+  }
+}
+
+async function toggleTorch(){
+  if (!torchSupported || !qr) return;
+  torchOn = !torchOn;
+
+  try {
+    await qr.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+    showToast(torchOn ? "Torch ON" : "Torch OFF");
+  } catch(e){
+    showToast("Torch not supported");
+    torchOn = false;
+  }
+}
+
+/** =========================
+ *  TAP TO SHOW FOCUS RING (optional)
+ *  ========================= */
+reader.addEventListener("click", async (e) => {
   const rect = reader.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
@@ -192,45 +424,62 @@ reader.addEventListener("click", async (e) => {
   ring.style.left = x + "px";
   ring.style.top = y + "px";
   ring.style.opacity = 1;
-  setTimeout(()=> ring.style.opacity = 0, 400);
+  setTimeout(() => ring.style.opacity = 0, 400);
 
+  // Best effort: request continuous focus again
   try {
-    await qr.applyVideoConstraints({
-      advanced: [{ focusMode: "continuous" }]
-    });
-  } catch (err) {
-    try {
-      await qr.stop();
-      await new Promise(r => setTimeout(r, 300)); // 🔥 critical delay
-      startScanner();
-    } catch(e){}
-  }
+    if (qr && !isPaused) {
+      await qr.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] });
+    }
+  } catch(e){}
 });
 
-/* SCAN */
-function onScan(text){
+/** =========================
+ *  SCAN CALLBACK (pause -> confirm)
+ *  ========================= */
+async function onScanSuccess(decodedText, decodedResult){
+  const text = decodedText;
+  const now = Date.now();
 
-  const now=Date.now();
-  if(scanLock) return;
-  if(text===lastScan && now-lastTime<2000) return;
+  if (scanLock) return;
+  if (text === lastScan && now - lastTime < 2000) return;
 
-  scanLock=true;
-  lastScan=text;
-  lastTime=now;
+  scanLock = true;
+  lastScan = text;
+  lastTime = now;
 
-  qr.stop().then(()=>{
-    send(text);
-
-    setTimeout(()=>{
-      scanLock=false;
-      startScanner();
-    },1800); // 🔥 better refocus time
-  });
+  await pauseScanner();
+  openConfirm(text);
 }
 
-/* SEND */
-function send(itemId){
+/** Confirm / Rescan */
+confirmYesBtn.addEventListener("click", async () => {
+  if (!pendingScanText) return;
 
+  closeConfirm();
+  const toSend = pendingScanText;
+  pendingScanText = null;
+
+  await send(toSend);
+
+  // Cooldown so they don't instantly re-scan the same code
+  setTimeout(async () => {
+    scanLock = false;
+    await resumeScanner();
+  }, 700);
+});
+
+confirmNoBtn.addEventListener("click", async () => {
+  closeConfirm();
+  pendingScanText = null;
+  scanLock = false;
+  await resumeScanner();
+});
+
+/** =========================
+ *  SEND
+ *  ========================= */
+async function send(itemId){
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
@@ -238,28 +487,21 @@ function send(itemId){
     "&po=" + encodeURIComponent(poEl.value || "") +
     "&user=" + encodeURIComponent(userEl.value || "");
 
-  fetch(url)
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.success){
-        showToast("✔ "+itemId);
-        if(navigator.vibrate) navigator.vibrate(100);
-        beep();
-      } else {
-        alert(d.error);
-      }
-    })
-    .catch(e=>alert("Network error: " + e.message));
-}
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
 
-/* EXIT */
-function exitApp(){
-  if(qr){
-    qr.stop().catch(()=>{});
-    qr.clear().catch(()=>{});
+    if (d.success) {
+      showToast("✔ " + itemId);
+      if (navigator.vibrate) navigator.vibrate(100);
+      beep();
+    } else {
+      alert(d.error || "Unknown error");
+    }
+  } catch (e) {
+    alert("Network error: " + e.message);
   }
 }
-
 </script>
 
 </body>
