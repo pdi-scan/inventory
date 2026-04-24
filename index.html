@@ -1,11 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>PDI Scanner</title>
+  <title>Inventory Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#111827">
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -14,8 +11,6 @@
     header { background:#111827; color:white; padding:16px; font-size:20px; }
 
     .container { padding:16px; }
-
-    label { display:block; text-align:left; max-width:420px; margin:0 auto 4px; font-weight:600; }
 
     input {
       width:100%; max-width:420px; padding:14px;
@@ -28,34 +23,23 @@
       margin:auto;
       background:black;
       border-radius:12px;
-      overflow:hidden;
       position:relative;
     }
 
-    /* 🔥 TAP INDICATOR */
     #focusRing {
       position:absolute;
       width:80px;
       height:80px;
       border:3px solid yellow;
       border-radius:50%;
-      pointer-events:none;
-      transform:translate(-50%, -50%);
+      transform:translate(-50%,-50%);
       opacity:0;
       transition:0.3s;
     }
 
-    .button-row {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
-      max-width:420px;
-      margin:10px auto;
-    }
-
     button {
       padding:16px;
-      font-size:18px;
+      margin:5px;
       border:none;
       border-radius:10px;
       color:white;
@@ -63,50 +47,38 @@
     }
 
     #startBtn { background:#2563eb; }
-    #exitBtn  { background:#dc2626; }
+    #exitBtn { background:#dc2626; }
 
     #toast {
-      visibility:hidden;
       position:fixed;
       bottom:30px;
       left:50%;
       transform:translateX(-50%);
       background:#111827;
       color:white;
-      padding:14px;
+      padding:12px;
       border-radius:8px;
       opacity:0;
       transition:0.3s;
     }
 
-    #toast.show { visibility:visible; opacity:1; }
+    #toast.show { opacity:1; }
   </style>
 </head>
 
 <body>
 
-<header>📦 PDI Scanner</header>
+<header>📦 Scanner</header>
 
 <div class="container">
-
-  <label>Device/User</label>
-  <input id="user">
-
-  <label>PO</label>
-  <input id="po">
-
-  <label>Qty</label>
-  <input id="qty" type="number" value="1">
-
-  <div class="button-row">
-    <button id="startBtn" onclick="startScanner()" disabled>Start</button>
-    <button onclick="exitApp()">Exit</button>
-  </div>
+  <input id="user" placeholder="User">
+  <input id="po" placeholder="PO">
+  <button id="startBtn" onclick="startScanner()">Start</button>
+  <button id="exitBtn" onclick="exitApp()">Exit</button>
 
   <div id="reader">
     <div id="focusRing"></div>
   </div>
-
 </div>
 
 <audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
@@ -114,37 +86,13 @@
 
 <script>
 
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+let qr;
+let scanLock=false, lastScan="", lastTime=0;
 
-let qr, scanLock=false, lastScan="", lastTime=0;
-
-const userEl = document.getElementById("user");
-const poEl = document.getElementById("po");
-const qtyEl = document.getElementById("qty");
-const startBtn = document.getElementById("startBtn");
 const reader = document.getElementById("reader");
 const ring = document.getElementById("focusRing");
 
-userEl.oninput = poEl.oninput = () => {
-  startBtn.disabled = !(userEl.value && poEl.value);
-};
-
-/* TOAST */
-function showToast(msg){
-  const t=document.getElementById("toast");
-  t.innerText=msg;
-  t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"),2000);
-}
-
-/* SOUND */
-function beep(){
-  const a=document.getElementById("beep");
-  a.currentTime=0;
-  a.play().catch(()=>{});
-}
-
-/* START */
+/* START SCANNER */
 function startScanner(){
 
   qr = new Html5Qrcode("reader");
@@ -152,12 +100,27 @@ function startScanner(){
   qr.start(
     { facingMode: { exact: "environment" } },
     {
-      fps: 20,
-      qrbox: { width: 180, height: 180 },
+      fps: 25,
+      qrbox: { width: 140, height: 140 }, // 🔥 smaller = better for small QR
+      aspectRatio: 1.0,
       formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
     },
     onScan
-  );
+  ).then(enableZoom).catch(err=>{
+    alert("Camera failed: " + err);
+  });
+}
+
+/* SAFE ZOOM (POST START) */
+async function enableZoom(){
+  try {
+    const caps = await qr.getRunningTrackCapabilities();
+    if (caps.zoom) {
+      await qr.applyVideoConstraints({
+        advanced: [{ zoom: Math.min(2, caps.zoom.max) }]
+      });
+    }
+  } catch(e){}
 }
 
 /* TAP TO FOCUS */
@@ -167,26 +130,22 @@ reader.addEventListener("click", async (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  // 🔥 show ring
   ring.style.left = x + "px";
   ring.style.top = y + "px";
   ring.style.opacity = 1;
-  setTimeout(()=> ring.style.opacity = 0, 500);
+  setTimeout(()=> ring.style.opacity = 0, 400);
 
   try {
-    // Try real focus (rare support)
     await qr.applyVideoConstraints({
       advanced: [{ focusMode: "continuous" }]
     });
   } catch (err) {
-    // 🔥 fallback = restart camera (forces refocus)
+
+    // 🔥 iPhone fallback (restart camera with delay)
     try {
       await qr.stop();
-      await qr.start(
-        { facingMode: "environment" },
-        { fps:20, qrbox:{ width:180, height:180 } },
-        onScan
-      );
+      await new Promise(r => setTimeout(r, 300));
+      await startScanner();
     } catch(e){}
   }
 
@@ -204,39 +163,30 @@ function onScan(text){
   lastTime=now;
 
   qr.stop().then(()=>{
-    send(text);
+    showToast("✔ " + text);
+    beep();
+
     setTimeout(()=>{
       scanLock=false;
       startScanner();
-    },1200);
+    },1800); // 🔥 longer delay = better refocus
   });
 }
 
-/* SEND */
-function send(itemId){
-
-  const url =
-    API_URL +
-    "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(qtyEl.value) +
-    "&po=" + encodeURIComponent(poEl.value) +
-    "&user=" + encodeURIComponent(userEl.value);
-
-  fetch(url)
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.success){
-        showToast("✔ "+itemId);
-        if(navigator.vibrate) navigator.vibrate(100);
-        beep();
-      } else {
-        alert(d.error);
-      }
-    })
-    .catch(e=>alert(e.message));
+/* UI */
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.innerText=msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),2000);
 }
 
-/* EXIT */
+function beep(){
+  const a=document.getElementById("beep");
+  a.currentTime=0;
+  a.play().catch(()=>{});
+}
+
 function exitApp(){
   if(qr){
     qr.stop().catch(()=>{});
