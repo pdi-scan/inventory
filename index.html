@@ -2,282 +2,247 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Inventory Scanner (iPhone Stable)</title>
+<title>Warehouse Scanner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#111827" />
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-  body { font-family:-apple-system, Arial; margin:0; background:#f3f4f6; text-align:center; }
-  header { background:#111827; color:white; padding:16px; font-size:20px; font-weight:800; }
+body { font-family:-apple-system; margin:0; background:#111; color:white; text-align:center; }
+header { padding:14px; font-weight:800; background:#000; }
 
-  .container { padding:16px; }
+.container { padding:12px; }
 
-  label { display:block; text-align:left; max-width:420px; margin:0 auto 6px; font-weight:800; }
+input {
+  width:100%; max-width:420px;
+  padding:14px; margin:6px auto;
+  border-radius:10px; border:none;
+  font-size:16px;
+}
 
-  input {
-    width:100%; max-width:420px; padding:14px;
-    margin:0 auto 12px; border-radius:10px;
-    border:1px solid #cbd5e1; font-size:16px;
-    box-sizing:border-box;
-  }
+.button-row {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  max-width:420px;
+  margin:10px auto;
+}
 
-  .button-row {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-    max-width:420px;
-    margin:10px auto;
-  }
+button {
+  padding:14px;
+  border:none;
+  border-radius:12px;
+  font-weight:800;
+}
 
-  button {
-    padding:14px;
-    font-size:16px;
-    border:none;
-    border-radius:12px;
-    color:white;
-    font-weight:900;
-  }
+#startBtn { background:#2563eb; color:white; }
+#exitBtn { background:#dc2626; color:white; }
+#torchBtn { background:#f59e0b; color:black; }
 
-  #startBtn { background:#2563eb; }
-  #exitBtn { background:#dc2626; }
+#reader {
+  max-width:420px;
+  margin:10px auto;
+  border-radius:14px;
+  overflow:hidden;
+}
 
-  #reader {
-    width:100%;
-    max-width:420px;
-    margin:0 auto;
-    background:black;
-    border-radius:14px;
-    overflow:hidden;
-    min-height:280px;
-  }
+#status {
+  margin-top:10px;
+  font-weight:700;
+  min-height:24px;
+}
 
-  #toast {
-    visibility:hidden;
-    position:fixed;
-    bottom:30px;
-    left:50%;
-    transform:translateX(-50%);
-    background:#111827;
-    color:white;
-    padding:12px 14px;
-    border-radius:10px;
-    opacity:0;
-    transition:0.25s;
-  }
-
-  #toast.show { visibility:visible; opacity:1; }
-
-  #confirmModal{
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,0.55);
-    display:none;
-    align-items:center;
-    justify-content:center;
-    z-index:9999;
-  }
-
-  #confirmCard{
-    width:min(420px, 92vw);
-    background:white;
-    border-radius:14px;
-    padding:18px;
-    text-align:left;
-  }
-
-  #confirmValue{
-    font-family: monospace;
-    background:#f3f4f6;
-    padding:12px;
-    border-radius:10px;
-    word-break:break-word;
-    margin-bottom:14px;
-  }
-
-  #confirmActions{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-  }
-
-  #confirmYesBtn { background:#16a34a; color:white; border:none; padding:14px; border-radius:12px; }
-  #confirmNoBtn  { background:#dc2626; color:white; border:none; padding:14px; border-radius:12px; }
+.flash {
+  animation:flash 0.2s;
+}
+@keyframes flash {
+  from { background:white; }
+  to { background:transparent; }
+}
 </style>
 </head>
 
 <body>
 
-<header>📦 Inventory Scanner</header>
+<header>📦 Warehouse Scanner</header>
 
 <div class="container">
 
-<label>User</label>
-<input id="user" autocomplete="off" />
-
-<label>PO</label>
-<input id="po" autocomplete="off" />
-
-<label>Qty</label>
-<input id="qty" type="number" value="1" min="1" />
+<input id="user" placeholder="User">
+<input id="po" placeholder="PO">
+<input id="qty" type="number" value="1" min="1">
 
 <div class="button-row">
   <button id="startBtn">Start</button>
   <button id="exitBtn">Exit</button>
 </div>
 
-<div id="reader"></div>
-
+<div class="button-row">
+  <button id="torchBtn">Toggle Light</button>
+  <button id="modeBtn">Mode: Confirm</button>
 </div>
 
-<div id="toast"></div>
+<div id="reader"></div>
+<div id="status"></div>
 
-<!-- Confirm Modal -->
-<div id="confirmModal">
-  <div id="confirmCard">
-    <h3>Confirm Scan</h3>
-    <div id="confirmValue"></div>
-    <div id="confirmActions">
-      <button id="confirmYesBtn">Confirm</button>
-      <button id="confirmNoBtn">Rescan</button>
-    </div>
-  </div>
 </div>
 
 <script>
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "YOUR_API_URL";
 
 let qr = null;
 let scanning = false;
 let scanLock = false;
-let pending = null;
+let lastScan = "";
+let lastTime = 0;
 
-const userEl = document.getElementById("user");
-const poEl = document.getElementById("po");
-const qtyEl = document.getElementById("qty");
+let torchOn = false;
+let instantMode = false;
 
-const toast = document.getElementById("toast");
-const modal = document.getElementById("confirmModal");
-const valueBox = document.getElementById("confirmValue");
+const statusEl = document.getElementById("status");
 
-function showToast(msg){
-  toast.innerText = msg;
-  toast.classList.add("show");
-  setTimeout(()=>toast.classList.remove("show"), 2000);
+function setStatus(msg){
+  statusEl.innerText = msg;
 }
 
 function beep(){
   navigator.vibrate?.(80);
 }
 
-/* ---------- START CAMERA (ONCE ONLY) ---------- */
-async function startCamera() {
+function normalize(text){
+  text = text.trim();
+
+  // extract ID from URL if needed
+  try {
+    if (text.startsWith("http")) {
+      const url = new URL(text);
+      text = url.pathname.split("/").pop();
+    }
+  } catch(e){}
+
+  return text.toUpperCase();
+}
+
+/* ---------- START CAMERA ---------- */
+async function startCamera(){
   if (scanning) return;
 
   qr = qr || new Html5Qrcode("reader");
 
-  const config = {
-    fps: 12,
-    qrbox: (w,h)=>{
-      const m = Math.min(w,h);
-      return { width: m*0.65, height: m*0.65 };
-    },
-    aspectRatio: 1.0
-  };
-
   try {
-    scanning = true;
-
     await qr.start(
-      { facingMode: "environment" },
-      config,
-      onScan,
-      () => {}
+      { facingMode:"environment" },
+      {
+        fps:15,
+        qrbox:(w,h)=>{
+          const s = Math.min(w,h)*0.75;
+          return { width:s, height:s };
+        }
+      },
+      onScan
     );
 
-    showToast("Camera started");
-  } catch (e) {
-    scanning = false;
+    scanning = true;
+    setStatus("Ready");
+  } catch(e){
     alert("Camera error: " + e.message);
   }
 }
 
 /* ---------- SCAN ---------- */
-function onScan(decodedText) {
+function onScan(text){
+  const now = Date.now();
+
   if (scanLock) return;
+  if (text === lastScan && now - lastTime < 1200) return;
 
   scanLock = true;
-  pending = decodedText;
+  lastScan = text;
+  lastTime = now;
 
-  valueBox.innerText = decodedText;
-  modal.style.display = "flex";
-}
+  text = normalize(text);
 
-/* ---------- CONFIRM ---------- */
-document.getElementById("confirmYesBtn").onclick = async () => {
-  modal.style.display = "none";
-  await send(pending);
+  document.body.classList.add("flash");
+  setTimeout(()=>document.body.classList.remove("flash"), 100);
 
-  pending = null;
+  beep();
 
-  setTimeout(() => {
+  if (instantMode){
+    send(text);
+    setTimeout(()=>scanLock=false, 400);
+  } else {
+    if (confirm("Scan: " + text)){
+      send(text);
+    }
     scanLock = false;
-  }, 400);
-};
-
-document.getElementById("confirmNoBtn").onclick = () => {
-  modal.style.display = "none";
-  pending = null;
-  scanLock = false;
-};
+  }
+}
 
 /* ---------- SEND ---------- */
 async function send(itemId){
+  setStatus("Sending...");
+
   const url = API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(qtyEl.value || 1) +
-    "&po=" + encodeURIComponent(poEl.value || "") +
-    "&user=" + encodeURIComponent(userEl.value || "");
+    "&qty=" + encodeURIComponent(document.getElementById("qty").value) +
+    "&po=" + encodeURIComponent(document.getElementById("po").value) +
+    "&user=" + encodeURIComponent(document.getElementById("user").value);
 
   try {
     const r = await fetch(url);
     const d = await r.json();
 
-    if (d.success) {
-      showToast("✔ " + itemId);
-      beep();
+    if (d.success){
+      setStatus("✔ " + itemId);
     } else {
-      alert(d.error || "Error");
+      setStatus("❌ " + (d.error || "Error"));
     }
-  } catch (e) {
-    alert("Network error: " + e.message);
+  } catch(e){
+    setStatus("Network error");
   }
 }
 
-/* ---------- START / EXIT ---------- */
-document.getElementById("startBtn").onclick = async () => {
-  if (!userEl.value || !poEl.value) {
-    alert("User and PO required");
-    return;
-  }
+/* ---------- TORCH ---------- */
+document.getElementById("torchBtn").onclick = async () => {
+  if (!qr) return;
 
-  await startCamera();
+  try {
+    const track = qr.getRunningTrack();
+    await track.applyConstraints({
+      advanced: [{ torch: !torchOn }]
+    });
+    torchOn = !torchOn;
+  } catch(e){
+    alert("Torch not supported");
+  }
 };
 
-document.getElementById("exitBtn").onclick = async () => {
+/* ---------- MODE ---------- */
+document.getElementById("modeBtn").onclick = (e)=>{
+  instantMode = !instantMode;
+  e.target.innerText = instantMode ? "Mode: Instant" : "Mode: Confirm";
+};
+
+/* ---------- START / EXIT ---------- */
+document.getElementById("startBtn").onclick = ()=>{
+  if (!user.value || !po.value){
+    alert("User + PO required");
+    return;
+  }
+  startCamera();
+};
+
+document.getElementById("exitBtn").onclick = async ()=>{
   try {
-    if (qr && scanning) {
+    if (qr && scanning){
       await qr.stop();
       await qr.clear();
     }
-  } catch(e) {}
+  } catch(e){}
 
   scanning = false;
   scanLock = false;
-  pending = null;
-
-  showToast("Camera stopped");
+  setStatus("Stopped");
 };
 </script>
 
