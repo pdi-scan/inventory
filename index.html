@@ -1,433 +1,240 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Inventory Scanner</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#111827" />
+<meta charset="utf-8" />
+<title>Inventory Scanner (iPhone Stable)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#111827" />
 
-  <script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 
-  <style>
-    body { font-family:-apple-system, Arial, sans-serif; margin:0; background:#f3f4f6; text-align:center; }
-    header { background:#111827; color:white; padding:16px; font-size:20px; font-weight:800; }
+<style>
+  body { font-family:-apple-system, Arial; margin:0; background:#f3f4f6; text-align:center; }
+  header { background:#111827; color:white; padding:16px; font-size:20px; font-weight:800; }
 
-    .container { padding:16px; }
-    label { display:block; text-align:left; max-width:420px; margin:0 auto 6px; font-weight:800; }
+  .container { padding:16px; }
 
-    input {
-      width:100%; max-width:420px; padding:14px;
-      margin:0 auto 12px; border-radius:10px; border:1px solid #cbd5e1;
-      box-sizing:border-box; font-size:16px; background:white;
-    }
+  label { display:block; text-align:left; max-width:420px; margin:0 auto 6px; font-weight:800; }
 
-    .button-row {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
-      max-width:420px;
-      margin:10px auto;
-    }
+  input {
+    width:100%; max-width:420px; padding:14px;
+    margin:0 auto 12px; border-radius:10px;
+    border:1px solid #cbd5e1; font-size:16px;
+    box-sizing:border-box;
+  }
 
-    button {
-      padding:14px;
-      font-size:16px;
-      border:none;
-      border-radius:12px;
-      color:white;
-      font-weight:900;
-      cursor:pointer;
-    }
-    button:disabled { opacity:0.6; cursor:not-allowed; }
-    #startBtn { background:#2563eb; }
-    #exitBtn  { background:#dc2626; }
+  .button-row {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    max-width:420px;
+    margin:10px auto;
+  }
 
-    #reader {
-      width:100%;
-      max-width:420px;
-      margin:0 auto;
-      background:black;
-      border-radius:14px;
-      overflow:hidden;
-      position:relative;
-      min-height:280px;
-    }
+  button {
+    padding:14px;
+    font-size:16px;
+    border:none;
+    border-radius:12px;
+    color:white;
+    font-weight:900;
+  }
 
-    #toast {
-      visibility:hidden;
-      position:fixed;
-      bottom:30px;
-      left:50%;
-      transform:translateX(-50%);
-      background:#111827;
-      color:white;
-      padding:12px 14px;
-      border-radius:10px;
-      opacity:0;
-      transition:0.25s;
-      z-index:9998;
-      max-width:92vw;
-    }
-    #toast.show { visibility:visible; opacity:1; }
+  #startBtn { background:#2563eb; }
+  #exitBtn { background:#dc2626; }
 
-    /* Confirm modal */
-    #confirmModal{
-      position:fixed;
-      inset:0;
-      background:rgba(0,0,0,0.55);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      z-index:9999;
-    }
-    #confirmCard{
-      width:min(420px, 92vw);
-      background:white;
-      border-radius:14px;
-      padding:18px;
-      text-align:left;
-      box-shadow:0 12px 40px rgba(0,0,0,0.35);
-    }
-    #confirmTitle{
-      font-size:18px;
-      font-weight:900;
-      margin-bottom:10px;
-    }
-    #confirmValue{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      background:#f3f4f6;
-      padding:12px;
-      border-radius:10px;
-      word-break:break-word;
-      margin-bottom:14px;
-    }
-    #confirmActions{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:10px;
-    }
-    #confirmYesBtn{ background:#16a34a; color:white; border:none; border-radius:12px; padding:14px; font-size:16px; font-weight:900; }
-    #confirmNoBtn { background:#dc2626; color:white; border:none; border-radius:12px; padding:14px; font-size:16px; font-weight:900; }
+  #reader {
+    width:100%;
+    max-width:420px;
+    margin:0 auto;
+    background:black;
+    border-radius:14px;
+    overflow:hidden;
+    min-height:280px;
+  }
 
-    /* Diagnostics box */
-    #diag {
-      max-width:420px;
-      margin:10px auto 0;
-      text-align:left;
-      background:#fff;
-      border:1px solid #e2e8f0;
-      border-radius:12px;
-      padding:12px;
-      display:none;
-      font-size:13px;
-      color:#0f172a;
-      white-space:pre-wrap;
-      word-break:break-word;
-    }
-  </style>
+  #toast {
+    visibility:hidden;
+    position:fixed;
+    bottom:30px;
+    left:50%;
+    transform:translateX(-50%);
+    background:#111827;
+    color:white;
+    padding:12px 14px;
+    border-radius:10px;
+    opacity:0;
+    transition:0.25s;
+  }
+
+  #toast.show { visibility:visible; opacity:1; }
+
+  #confirmModal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:9999;
+  }
+
+  #confirmCard{
+    width:min(420px, 92vw);
+    background:white;
+    border-radius:14px;
+    padding:18px;
+    text-align:left;
+  }
+
+  #confirmValue{
+    font-family: monospace;
+    background:#f3f4f6;
+    padding:12px;
+    border-radius:10px;
+    word-break:break-word;
+    margin-bottom:14px;
+  }
+
+  #confirmActions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+
+  #confirmYesBtn { background:#16a34a; color:white; border:none; padding:14px; border-radius:12px; }
+  #confirmNoBtn  { background:#dc2626; color:white; border:none; padding:14px; border-radius:12px; }
+</style>
 </head>
 
 <body>
-<header>📦 Inventory Scanner 2</header>
+
+<header>📦 Inventory Scanner</header>
 
 <div class="container">
-  <label>Device/User</label>
-  <input id="user" autocomplete="off" />
 
-  <label>PO</label>
-  <input id="po" autocomplete="off" />
+<label>User</label>
+<input id="user" autocomplete="off" />
 
-  <label>Qty</label>
-  <input id="qty" type="number" value="1" min="1" step="1" />
+<label>PO</label>
+<input id="po" autocomplete="off" />
 
-  <div class="button-row">
-    <button id="startBtn" disabled>Start</button>
-    <button id="exitBtn">Exit</button>
-  </div>
+<label>Qty</label>
+<input id="qty" type="number" value="1" min="1" />
 
-  <div id="reader"></div>
-  <div id="diag"></div>
+<div class="button-row">
+  <button id="startBtn">Start</button>
+  <button id="exitBtn">Exit</button>
 </div>
 
-<audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+<div id="reader"></div>
+
+</div>
+
 <div id="toast"></div>
 
 <!-- Confirm Modal -->
-<div id="confirmModal" aria-modal="true" role="dialog">
+<div id="confirmModal">
   <div id="confirmCard">
-    <div id="confirmTitle">Confirm Scan</div>
+    <h3>Confirm Scan</h3>
     <div id="confirmValue"></div>
     <div id="confirmActions">
-      <button id="confirmYesBtn" type="button">Confirm</button>
-      <button id="confirmNoBtn" type="button">Rescan</button>
+      <button id="confirmYesBtn">Confirm</button>
+      <button id="confirmNoBtn">Rescan</button>
     </div>
   </div>
 </div>
 
 <script>
-/** =========================
- *  CONFIG
- *  ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
-/** =========================
- *  DOM
- *  ========================= */
-const userEl   = document.getElementById("user");
-const poEl     = document.getElementById("po");
-const qtyEl    = document.getElementById("qty");
-const startBtn = document.getElementById("startBtn");
-const exitBtn  = document.getElementById("exitBtn");
-
-const diagEl   = document.getElementById("diag");
-
-const confirmModal  = document.getElementById("confirmModal");
-const confirmValue  = document.getElementById("confirmValue");
-const confirmYesBtn = document.getElementById("confirmYesBtn");
-const confirmNoBtn  = document.getElementById("confirmNoBtn");
-
-/** =========================
- *  STATE
- *  ========================= */
 let qr = null;
-let isStarted = false;     // camera scanning started at least once
-let isPaused  = false;     // scanning paused (video frozen)
-let scanLock  = false;
-let lastScan  = "";
-let lastTime  = 0;
-let pendingScanText = null;
+let scanning = false;
+let scanLock = false;
+let pending = null;
 
-/** =========================
- *  CAMERA OP QUEUE (mutex)
- *  ========================= */
-let cameraOp = Promise.resolve();
-function enqueueCameraOp(fn) {
-  cameraOp = cameraOp
-    .catch(() => {}) // keep queue alive
-    .then(fn);
-  return cameraOp;
-}
+const userEl = document.getElementById("user");
+const poEl = document.getElementById("po");
+const qtyEl = document.getElementById("qty");
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const toast = document.getElementById("toast");
+const modal = document.getElementById("confirmModal");
+const valueBox = document.getElementById("confirmValue");
 
-/** =========================
- *  UI HELPERS
- *  ========================= */
 function showToast(msg){
-  const t = document.getElementById("toast");
-  t.innerText = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 2200);
+  toast.innerText = msg;
+  toast.classList.add("show");
+  setTimeout(()=>toast.classList.remove("show"), 2000);
 }
-function showDiag(text) {
-  diagEl.style.display = "block";
-  diagEl.textContent = text;
-}
-function clearDiag() {
-  diagEl.style.display = "none";
-  diagEl.textContent = "";
-}
+
 function beep(){
-  const a = document.getElementById("beep");
-  a.currentTime = 0;
-  a.play().catch(()=>{});
-}
-function openConfirm(text) {
-  pendingScanText = text;
-  confirmValue.textContent = text;
-  confirmModal.style.display = "flex";
-}
-function closeConfirm() {
-  confirmModal.style.display = "none";
+  navigator.vibrate?.(80);
 }
 
-/** Enable Start only when required fields present */
-function updateStartEnabled(){
-  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
-}
-userEl.oninput = poEl.oninput = updateStartEnabled;
-updateStartEnabled();
+/* ---------- START CAMERA (ONCE ONLY) ---------- */
+async function startCamera() {
+  if (scanning) return;
 
-/** =========================
- *  SECURE CONTEXT CHECK
- *  getUserMedia requires HTTPS/localhost in modern browsers. [2](https://stackoverflow.com/questions/78523966/need-help-setting-camera-zoom-level-using-html5qrcode-in-react-js)
- *  ========================= */
-function assertSecureContextOrExplain() {
-  const isLocalhost = ["localhost", "127.0.0.1"].includes(location.hostname);
-  if (location.protocol !== "https:" && !isLocalhost) {
-    showDiag(
-      "Camera access requires HTTPS (or localhost).\n\n" +
-      `Current origin: ${location.origin}\n\n` +
-      "Fix:\n- Host this page on https://\n- Or test on http://localhost\n"
-    );
-    alert("Camera requires HTTPS (or localhost).");
-    return false;
-  }
-  return true;
-}
+  qr = qr || new Html5Qrcode("reader");
 
-/** =========================
- *  QRBOX sizing (simple, iOS-friendly)
- *  ========================= */
-function qrboxSizing(viewfinderWidth, viewfinderHeight) {
-  const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-  const size = Math.floor(minEdge * 0.65);
-  return { width: size, height: size };
-}
-
-/** =========================
- *  SAFE STOP (with retry if iOS is "under transition")
- *  stop() is async and must be awaited. [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
- *  ========================= */
-async function stopWithRetry(retries = 12, delayMs = 200) {
-  if (!qr) return;
-
-  for (let i = 0; i < retries; i++) {
-    try {
-      await qr.stop();   // Promise<void> [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
-      break;
-    } catch (e) {
-      const msg = String(e?.message || e).toLowerCase();
-      if (msg.includes("under transition")) {
-        await sleep(delayMs);
-        continue;
-      }
-      // If it's already stopped/not running, treat as ok
-      if (msg.includes("not running") || msg.includes("not started")) {
-        break;
-      }
-      throw e;
-    }
-  }
-
-  try { qr.clear(); } catch(e) {}
-}
-
-/** =========================
- *  START (start once, with fallback constraints)
- *  start() accepts camera constraints or deviceId. [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
- *  ========================= */
-async function startCameraOnce() {
-  if (isStarted) return; // important: do NOT re-start on iOS unless exiting.
-
-  if (!qr) {
-    qr = new Html5Qrcode("reader");
-  }
-
-  const scanConfig = {
+  const config = {
     fps: 12,
-    qrbox: qrboxSizing,
-    aspectRatio: 1.0,
-    formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+    qrbox: (w,h)=>{
+      const m = Math.min(w,h);
+      return { width: m*0.65, height: m*0.65 };
+    },
+    aspectRatio: 1.0
   };
 
-  const attempts = [
-    { label: "Back + ideal 1080p", cam: { facingMode:"environment", width:{ideal:1920}, height:{ideal:1080} } },
-    { label: "Back only",          cam: { facingMode:"environment" } }
-  ];
-
-  // last fallback: start with first camera deviceId
-  let cams = [];
-  try { cams = await Html5Qrcode.getCameras(); } catch(e) {}
-  if (cams?.length) attempts.push({ label: "First camera by id", cam: cams[0].id });
-
-  let lastErr = null;
-  for (const a of attempts) {
-    try {
-      await qr.start(a.cam, scanConfig, onScanSuccess, () => {}); // Promise<null> [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
-      isStarted = true;
-      isPaused = false;
-      showToast("Camera started");
-      // Disable start after success; iOS Safari hates rapid restart cycles.
-      startBtn.disabled = true;
-      return;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-
-  const errName = lastErr?.name || "Error";
-  const errMsg  = lastErr?.message || String(lastErr || "");
-  showDiag(`Camera start failed.\n\n${errName}: ${errMsg}`);
-  alert(`Camera failed.\n\n${errName}: ${errMsg}`);
-}
-
-/** =========================
- *  PAUSE/RESUME (scan -> pause -> confirm)
- *  pause(true) and resume() are supported by Html5Qrcode. [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
- *  ========================= */
-function pauseFreeze() {
-  if (!qr || typeof qr.pause !== "function") return;
   try {
-    qr.pause(true); // freeze frame [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
-    isPaused = true;
+    scanning = true;
+
+    await qr.start(
+      { facingMode: "environment" },
+      config,
+      onScan,
+      () => {}
+    );
+
+    showToast("Camera started");
   } catch (e) {
-    // If iOS is transitioning, we avoid doing anything else.
-    console.warn("pause failed:", e?.message || e);
+    scanning = false;
+    alert("Camera error: " + e.message);
   }
 }
 
-function resumeScan() {
-  if (!qr || typeof qr.resume !== "function") return;
-  try {
-    qr.resume(); // [1](https://scanapp.org/html5-qrcode-docs/docs/apis/classes/Html5Qrcode)
-    isPaused = false;
-  } catch (e) {
-    console.warn("resume failed:", e?.message || e);
-  }
-}
-
-/** =========================
- *  SCAN CALLBACK
- *  ========================= */
-function onScanSuccess(decodedText) {
-  const now = Date.now();
+/* ---------- SCAN ---------- */
+function onScan(decodedText) {
   if (scanLock) return;
-  if (decodedText === lastScan && now - lastTime < 2000) return;
 
   scanLock = true;
-  lastScan = decodedText;
-  lastTime = now;
+  pending = decodedText;
 
-  // Serialize pause + UI show, to avoid state collisions
-  enqueueCameraOp(async () => {
-    pauseFreeze();
-    openConfirm(decodedText);
-  });
+  valueBox.innerText = decodedText;
+  modal.style.display = "flex";
 }
 
-/** Confirm / Rescan */
-confirmYesBtn.addEventListener("click", () => {
-  enqueueCameraOp(async () => {
-    if (!pendingScanText) return;
+/* ---------- CONFIRM ---------- */
+document.getElementById("confirmYesBtn").onclick = async () => {
+  modal.style.display = "none";
+  await send(pending);
 
-    closeConfirm();
-    const toSend = pendingScanText;
-    pendingScanText = null;
+  pending = null;
 
-    await send(toSend);
-
-    await sleep(700);
+  setTimeout(() => {
     scanLock = false;
-    resumeScan();
-  });
-});
+  }, 400);
+};
 
-confirmNoBtn.addEventListener("click", () => {
-  enqueueCameraOp(async () => {
-    closeConfirm();
-    pendingScanText = null;
-    scanLock = false;
-    resumeScan();
-  });
-});
+document.getElementById("confirmNoBtn").onclick = () => {
+  modal.style.display = "none";
+  pending = null;
+  scanLock = false;
+};
 
-/** =========================
- *  SEND
- *  ========================= */
-async function send(itemId) {
-  const url =
-    API_URL +
+/* ---------- SEND ---------- */
+async function send(itemId){
+  const url = API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
     "&qty=" + encodeURIComponent(qtyEl.value || 1) +
     "&po=" + encodeURIComponent(poEl.value || "") +
@@ -439,47 +246,40 @@ async function send(itemId) {
 
     if (d.success) {
       showToast("✔ " + itemId);
-      if (navigator.vibrate) navigator.vibrate(100);
       beep();
     } else {
-      alert(d.error || "Unknown error");
+      alert(d.error || "Error");
     }
   } catch (e) {
     alert("Network error: " + e.message);
   }
 }
 
-/** =========================
- *  START/EXIT BUTTONS
- *  ========================= */
-startBtn.addEventListener("click", () => {
-  enqueueCameraOp(async () => {
-    clearDiag();
-    if (!assertSecureContextOrExplain()) return;
-    if (!userEl.value.trim() || !poEl.value.trim()) {
-      alert("User and PO required");
-      return;
+/* ---------- START / EXIT ---------- */
+document.getElementById("startBtn").onclick = async () => {
+  if (!userEl.value || !poEl.value) {
+    alert("User and PO required");
+    return;
+  }
+
+  await startCamera();
+};
+
+document.getElementById("exitBtn").onclick = async () => {
+  try {
+    if (qr && scanning) {
+      await qr.stop();
+      await qr.clear();
     }
-    await startCameraOnce();
-  });
-});
+  } catch(e) {}
 
-exitBtn.addEventListener("click", () => {
-  enqueueCameraOp(async () => {
-    closeConfirm();
-    pendingScanText = null;
-    scanLock = false;
+  scanning = false;
+  scanLock = false;
+  pending = null;
 
-    if (qr) {
-      await stopWithRetry();
-    }
-
-    isStarted = false;
-    isPaused  = false;
-    startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
-    showToast("Camera stopped");
-  });
-});
+  showToast("Camera stopped");
+};
 </script>
+
 </body>
 </html>
