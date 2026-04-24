@@ -1,49 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory Scanner</title>
+  <title>PDI Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#111827">
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
-    body {
-      font-family: -apple-system, Arial;
-      margin: 0;
-      background: #f3f4f6;
-      text-align: center;
-    }
+    body { font-family:-apple-system,Arial; margin:0; background:#f3f4f6; text-align:center; }
+    header { background:#111827; color:white; padding:16px; font-size:20px; }
 
-    header {
-      background: #111827;
-      color: white;
-      padding: 16px;
-      font-size: 20px;
-      font-weight: bold;
-    }
+    .container { padding:16px; }
 
-    .container { padding: 16px; }
-
-    label {
-      display:block;
-      text-align:left;
-      max-width:420px;
-      margin:0 auto 4px;
-      font-weight:600;
-    }
+    label { display:block; text-align:left; max-width:420px; margin:0 auto 4px; font-weight:600; }
 
     input {
-      width:100%;
-      max-width:420px;
-      padding:14px;
-      margin-bottom:10px;
-      border-radius:8px;
-      border:1px solid #ccc;
-      font-size:16px;
+      width:100%; max-width:420px; padding:14px;
+      margin-bottom:10px; border-radius:8px; border:1px solid #ccc;
     }
 
     #reader {
@@ -70,218 +46,162 @@
       border-radius:10px;
       color:white;
       font-weight:bold;
-      width:100%;
     }
 
     #startBtn { background:#2563eb; }
     #exitBtn  { background:#dc2626; }
 
-    button:disabled {
-      background:#9ca3af !important;
-    }
-
-    #status {
-      margin-top:20px;
-      background:white;
-      padding:12px;
-      border-radius:8px;
-      max-width:420px;
-      margin-left:auto;
-      margin-right:auto;
-      font-size:16px;
-    }
-
     #toast {
-      visibility: hidden;
-      min-width: 250px;
-      background-color: #111827;
-      color: white;
-      text-align: center;
-      border-radius: 8px;
-      padding: 14px;
-      position: fixed;
-      left: 50%;
-      bottom: 30px;
-      transform: translateX(-50%);
-      font-size: 16px;
-      z-index: 9999;
-      opacity: 0;
-      transition: opacity 0.3s ease;
+      visibility:hidden;
+      position:fixed;
+      bottom:30px;
+      left:50%;
+      transform:translateX(-50%);
+      background:#111827;
+      color:white;
+      padding:14px;
+      border-radius:8px;
+      opacity:0;
+      transition:0.3s;
     }
 
-    #toast.show {
-      visibility: visible;
-      opacity: 1;
-    }
+    #toast.show { visibility:visible; opacity:1; }
   </style>
 </head>
 
 <body>
 
-<header>📦 Inventory Scanner</header>
+<header>📦 PDI Scanner v20260423</header>
 
 <div class="container">
 
   <label>Device/User</label>
-  <input id="user" placeholder="Enter name">
+  <input id="user">
 
   <label>PO</label>
-  <input id="po" placeholder="Enter PO">
+  <input id="po">
 
   <label>Qty</label>
-  <input id="qty" type="number" min="1" value="1">
+  <input id="qty" type="number" value="1">
 
   <div class="button-row">
-    <button id="startBtn" onclick="startScanner()" disabled>📷 Start</button>
-    <button id="exitBtn" onclick="exitApp()">❌ Exit</button>
+    <button id="startBtn" onclick="startScanner()" disabled>Start</button>
+    <button onclick="exitApp()">Exit</button>
   </div>
 
   <div id="reader"></div>
-  <div id="status">Enter User + PO</div>
 
 </div>
 
-<audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
-
+<audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
 <div id="toast"></div>
 
 <script>
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
-let qr;
-let scanLock = false;
-let lastScan = "";
-let lastScanTime = 0;
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js");
-}
+let qr, scanLock=false, lastScan="", lastTime=0;
 
 const userEl = document.getElementById("user");
 const poEl = document.getElementById("po");
 const qtyEl = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
-const statusEl = document.getElementById("status");
 
-function checkReady() {
-  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
-}
-userEl.addEventListener("input", checkReady);
-poEl.addEventListener("input", checkReady);
+userEl.oninput = poEl.oninput = () => {
+  startBtn.disabled = !(userEl.value && poEl.value);
+};
 
-function showToast(message) {
-  const toast = document.getElementById("toast");
-  toast.innerText = message;
-  toast.classList.add("show");
-  setTimeout(() => toast.classList.remove("show"), 2000);
+/* TOAST */
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.innerText=msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),2000);
 }
 
-function playBeep() {
-  const audio = document.getElementById("beep");
-  audio.currentTime = 0;
-  audio.play().catch(()=>{});
+/* SOUND */
+function beep(){
+  const a=document.getElementById("beep");
+  a.currentTime=0;
+  a.play().catch(()=>{});
 }
 
-function startScanner() {
-
-  if (!userEl.value.trim() || !poEl.value.trim()) {
-    alert("User and PO required");
-    return;
-  }
-
-  statusEl.innerText =
-    `PO: ${poEl.value} | User: ${userEl.value}`;
+/* START SCANNER (🔥 IMPROVED) */
+function startScanner(){
 
   qr = new Html5Qrcode("reader");
 
   qr.start(
-    { facingMode: "environment" },
-    { fps: 15, qrbox: 250 },
-    onScanSuccess
+    {
+      facingMode: "environment",
+      advanced: [{ zoom: 2 }] // 🔥 zoom hint (device dependent)
+    },
+    {
+      fps: 25, // 🔥 higher scan rate
+      qrbox: { width: 180, height: 180 }, // 🔥 smaller box = better for small QR
+      aspectRatio: 1.0,
+
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.QR_CODE // 🔥 QR only = faster + more accurate
+      ]
+    },
+    onScan
   );
 }
 
-function onScanSuccess(text) {
+/* SCAN */
+function onScan(text){
 
-  const now = Date.now();
-  const item = (text || "").toString().trim();
+  const now=Date.now();
 
-  if (!item) return;
-  if (scanLock) return;
-  if (item === lastScan && (now - lastScanTime) < 2000) return;
+  if(scanLock) return;
+  if(text===lastScan && now-lastTime<2000) return;
 
-  scanLock = true;
-  lastScan = item;
-  lastScanTime = now;
+  scanLock=true;
+  lastScan=text;
+  lastTime=now;
 
-  qr.stop().then(() => {
-
-    sendToAPI(item);
-
-    setTimeout(() => {
-      scanLock = false;
+  qr.stop().then(()=>{
+    send(text);
+    setTimeout(()=>{
+      scanLock=false;
       startScanner();
-    }, 1200);
-
-  }).catch(()=>{});
+    },1200);
+  });
 }
 
-function sendToAPI(itemId) {
+/* SEND */
+function send(itemId){
 
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(qtyEl.value || 1) +
-    "&po=" + encodeURIComponent(poEl.value || "") +
-    "&user=" + encodeURIComponent(userEl.value || "");
+    "&qty=" + encodeURIComponent(qtyEl.value) +
+    "&po=" + encodeURIComponent(poEl.value) +
+    "&user=" + encodeURIComponent(userEl.value);
 
-  fetch(url, {
-    method: "GET",
-    cache: "no-store"
-  })
-  .then(res => res.json())
-  .then(data => {
+  fetch(url)
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.success){
+        showToast("✔ "+itemId);
 
-    if (data && data.success) {
+        if(navigator.vibrate) navigator.vibrate(100);
 
-      showToast("✔ " + itemId);
-
-      if (navigator.vibrate) {
-        navigator.vibrate(100);
+        beep();
+      } else {
+        alert(d.error);
       }
-
-      playBeep();
-
-      statusEl.innerText = `✔ ${itemId}`;
-
-    } else {
-      alert("ERROR: " + (data.error || "Unknown error"));
-      statusEl.innerText = "❌ Failed";
-    }
-
-  })
-  .catch(err => {
-    alert("NETWORK ERROR: " + err.message);
-    statusEl.innerText = "❌ Send failed";
-  });
+    })
+    .catch(e=>alert(e.message));
 }
 
-function exitApp() {
-
-  try {
-    if (qr) {
-      qr.stop().catch(()=>{});
-      qr.clear().catch(()=>{});
-    }
-  } catch (e) {}
-
-  scanLock = false;
-  lastScan = "";
-
-  document.getElementById("reader").innerHTML = "";
-
-  statusEl.innerText = "Scanner stopped";
+/* EXIT */
+function exitApp(){
+  if(qr){
+    qr.stop().catch(()=>{});
+    qr.clear().catch(()=>{});
+  }
 }
 
 </script>
