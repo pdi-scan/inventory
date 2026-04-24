@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory Scanner</title>
+  <title>PDI Scanner</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="manifest" href="manifest.json">
@@ -29,6 +29,20 @@
       background:black;
       border-radius:12px;
       overflow:hidden;
+      position:relative;
+    }
+
+    /* 🔥 TAP INDICATOR */
+    #focusRing {
+      position:absolute;
+      width:80px;
+      height:80px;
+      border:3px solid yellow;
+      border-radius:50%;
+      pointer-events:none;
+      transform:translate(-50%, -50%);
+      opacity:0;
+      transition:0.3s;
     }
 
     .button-row {
@@ -71,15 +85,15 @@
 
 <body>
 
-<header>📦 Inventory Scanner</header>
+<header>📦 PDI Scanner</header>
 
 <div class="container">
 
   <label>Device/User</label>
-  <input id="user" placeholder="Enter name">
+  <input id="user">
 
   <label>PO</label>
-  <input id="po" placeholder="Enter PO">
+  <input id="po">
 
   <label>Qty</label>
   <input id="qty" type="number" value="1">
@@ -89,7 +103,9 @@
     <button onclick="exitApp()">Exit</button>
   </div>
 
-  <div id="reader"></div>
+  <div id="reader">
+    <div id="focusRing"></div>
+  </div>
 
 </div>
 
@@ -106,9 +122,11 @@ const userEl = document.getElementById("user");
 const poEl = document.getElementById("po");
 const qtyEl = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
+const reader = document.getElementById("reader");
+const ring = document.getElementById("focusRing");
 
 userEl.oninput = poEl.oninput = () => {
-  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
+  startBtn.disabled = !(userEl.value && poEl.value);
 };
 
 /* TOAST */
@@ -126,39 +144,58 @@ function beep(){
   a.play().catch(()=>{});
 }
 
-/* START SCANNER (SAFE + OPTIMIZED) */
+/* START */
 function startScanner(){
-
-  if (!userEl.value.trim() || !poEl.value.trim()) {
-    alert("User and PO required");
-    return;
-  }
 
   qr = new Html5Qrcode("reader");
 
   qr.start(
-    { facingMode: { exact: "environment" } }, // 🔥 reliable back camera
+    { facingMode: { exact: "environment" } },
     {
       fps: 20,
       qrbox: { width: 180, height: 180 },
-      aspectRatio: 1.0,
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.QR_CODE
-      ]
+      formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
     },
-    onScan,
-    (err) => console.log("Scan error:", err)
-  ).catch(err => {
-    console.error("Camera start failed:", err);
-    alert("Camera failed. Check permissions or reload.");
-  });
+    onScan
+  );
 }
+
+/* TAP TO FOCUS */
+reader.addEventListener("click", async (e) => {
+
+  const rect = reader.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  // 🔥 show ring
+  ring.style.left = x + "px";
+  ring.style.top = y + "px";
+  ring.style.opacity = 1;
+  setTimeout(()=> ring.style.opacity = 0, 500);
+
+  try {
+    // Try real focus (rare support)
+    await qr.applyVideoConstraints({
+      advanced: [{ focusMode: "continuous" }]
+    });
+  } catch (err) {
+    // 🔥 fallback = restart camera (forces refocus)
+    try {
+      await qr.stop();
+      await qr.start(
+        { facingMode: "environment" },
+        { fps:20, qrbox:{ width:180, height:180 } },
+        onScan
+      );
+    } catch(e){}
+  }
+
+});
 
 /* SCAN */
 function onScan(text){
 
   const now=Date.now();
-
   if(scanLock) return;
   if(text===lastScan && now-lastTime<2000) return;
 
@@ -190,15 +227,13 @@ function send(itemId){
     .then(d=>{
       if(d.success){
         showToast("✔ "+itemId);
-
         if(navigator.vibrate) navigator.vibrate(100);
-
         beep();
       } else {
         alert(d.error);
       }
     })
-    .catch(e=>alert("Network error: " + e.message));
+    .catch(e=>alert(e.message));
 }
 
 /* EXIT */
