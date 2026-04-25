@@ -3,224 +3,125 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stable Warehouse Scanner</title>
+<title>Loop-Free Scanner</title>
 
 <script src="./js/zxing.min.js"></script>
 
 <style>
-body {
-  margin:0;
-  font-family:-apple-system, Arial;
-  background:#111;
-  color:white;
-  text-align:center;
-}
-
-header {
-  padding:12px;
-  font-weight:800;
-  background:#000;
-}
-
-video {
-  width:100%;
-  max-width:420px;
-  margin-top:10px;
-  border-radius:12px;
-  background:black;
-}
-
-input {
-  width:90%;
-  max-width:420px;
-  padding:12px;
-  margin:6px auto;
-  border-radius:8px;
-  border:none;
-  display:block;
-}
-
-button {
-  padding:12px;
-  margin:6px;
-  border:none;
-  border-radius:10px;
-  font-weight:800;
-}
-
-#status {
-  margin-top:10px;
-  font-weight:700;
-}
+body { margin:0; font-family:-apple-system; background:#111; color:white; text-align:center; }
+header { padding:12px; font-weight:800; background:#000; }
+video { width:100%; max-width:420px; border-radius:12px; margin-top:10px; }
+button { padding:12px; margin:6px; font-weight:800; border:none; border-radius:10px; }
+#status { margin-top:10px; }
 </style>
 </head>
 
 <body>
 
-<header>📦 Stable Scanner (No Loop)</header>
+<header>📦 Loop-Free Scanner</header>
 
-<input id="user" placeholder="User">
-<input id="po" placeholder="PO">
-<input id="qty" type="number" value="1" min="1">
-
-<button id="startBtn">Start</button>
-<button id="stopBtn">Stop</button>
+<button onclick="startScanner()">Start</button>
+<button onclick="stopScanner()">Stop</button>
 
 <video id="video" autoplay playsinline muted></video>
 
 <div id="status"></div>
 
 <script>
-if (!window.ZXing) {
-  alert("ZXing failed to load");
-}
+if (!window.ZXing) alert("ZXing not loaded");
 
-/* =========================
-   STATE MACHINE
-========================= */
-let reader = null;
-let stream = null;
-
-let lastScan = "";
-let lastSeenTime = 0;
-
-let locked = false;
-
-// IMPORTANT: requires QR to disappear fully before re-arming
-const RESET_MS = 1200;
-
-/* =========================
-   UI
-========================= */
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
 
-function setStatus(msg){
-  statusEl.innerText = msg;
-}
+let reader;
+let stream;
+
+let scanning = false;
+let locked = false;
+let lastCode = null;
+let lastSeen = 0;
+
+const RESET_MS = 1500;
 
 /* =========================
-   CAMERA UNLOCK (iOS FIX)
-========================= */
-async function unlockCamera(){
-  const temp = await navigator.mediaDevices.getUserMedia({ video:true });
-  temp.getTracks().forEach(t => t.stop());
-}
-
-/* =========================
-   START SCANNER
+   CAMERA
 ========================= */
 async function startScanner(){
-  try {
-    video.setAttribute("playsinline", true);
-    video.muted = true;
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" }
+  });
 
-    await unlockCamera();
+  video.srcObject = stream;
 
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }
-    });
+  reader = new ZXing.BrowserMultiFormatReader();
 
-    video.srcObject = stream;
+  scanning = true;
+  loopScan();
 
-    reader = new ZXing.BrowserMultiFormatReader();
-
-    reader.decodeFromVideoElementContinuously(video, (result) => {
-      const now = Date.now();
-
-      /* =========================
-         NO RESULT FRAME
-         (KEY RESET LOGIC)
-      ========================= */
-      if (!result) {
-        if (locked && (now - lastSeenTime > RESET_MS)) {
-          locked = false; // QR fully left view → re-arm
-        }
-        return;
-      }
-
-      const text = result.getText().trim();
-
-      /* =========================
-         HARD GATE (PREVENT LOOP)
-      ========================= */
-
-      if (locked) return;
-
-      // prevent same scan spam in short window
-      if (text === lastScan && now - lastSeenTime < RESET_MS) return;
-
-      /* =========================
-         LOCK IMMEDIATELY
-      ========================= */
-      locked = true;
-      lastScan = text;
-      lastSeenTime = now;
-
-      handleScan(text);
-    });
-
-    setStatus("Ready");
-  } catch (e) {
-    console.error(e);
-    alert("Camera error: " + e.message);
-  }
+  setStatus("Running");
 }
 
 /* =========================
-   HANDLE SCAN
+   MANUAL SCAN LOOP (KEY FIX)
+========================= */
+async function loopScan(){
+  if (!scanning) return;
+
+  try {
+    const result = await reader.decodeOnceFromVideoDevice(undefined, video);
+
+    if (result) {
+      const text = result.getText().trim();
+      const now = Date.now();
+
+      if (!locked || (text !== lastCode)) {
+        locked = true;
+        lastCode = text;
+        lastSeen = now;
+
+        handleScan(text);
+      }
+    }
+  } catch(e) {
+    // ignore decode errors
+  }
+
+  requestAnimationFrame(loopScan);
+}
+
+/* =========================
+   SCAN HANDLER
 ========================= */
 function handleScan(text){
   setStatus("Scanned: " + text);
 
-  if (confirm("Scanned:\n" + text)) {
-    send(text);
+  if (confirm(text)) {
+    console.log("SEND:", text);
   }
 
-  // IMPORTANT: do NOT unlock here
-  // unlock happens only when QR disappears from frame
-}
-
-/* =========================
-   SEND
-========================= */
-async function send(itemId){
-  const url = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec" +
-    "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(document.getElementById("qty").value) +
-    "&po=" + encodeURIComponent(document.getElementById("po").value) +
-    "&user=" + encodeURIComponent(document.getElementById("user").value);
-
-  try {
-    const r = await fetch(url);
-    const d = await r.json();
-
-    setStatus(d.success ? "✔ " + itemId : "❌ error");
-  } catch(e){
-    setStatus("Network error");
-  }
+  // unlock ONLY after QR disappears for long enough
+  setTimeout(() => {
+    locked = false;
+  }, RESET_MS);
 }
 
 /* =========================
    STOP
 ========================= */
 function stopScanner(){
-  try {
-    if (stream) stream.getTracks().forEach(t => t.stop());
-  } catch(e){}
+  scanning = false;
 
-  reader = null;
-  stream = null;
-  locked = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
 
   setStatus("Stopped");
 }
 
 /* =========================
-   BUTTONS
+   UI
 ========================= */
-document.getElementById("startBtn").onclick = startScanner;
-document.getElementById("stopBtn").onclick = stopScanner;
+function setStatus(msg){
+  statusEl.innerText = msg;
+}
 </script>
 
 </body>
