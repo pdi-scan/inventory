@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Warehouse Scanner</title>
+<title>Warehouse Scanner (Stable)</title>
 
 <script src="./js/zxing.min.js"></script>
 
@@ -77,21 +77,16 @@ button {
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 /* =========================
-   ZXING STATE
+   GLOBAL STATE
 ========================= */
-if (!window.ZXing) {
-  alert("ZXing failed to load");
-}
-
 let reader = null;
 let stream = null;
+let scanning = false;
 
-/* =========================
-   SCAN STATE MACHINE
-========================= */
 let locked = false;
 let lastCode = "";
 let lastTime = 0;
+
 const RESET_MS = 1500;
 
 /* =========================
@@ -117,6 +112,8 @@ async function unlockCamera(){
 ========================= */
 async function startScanner(){
   try {
+    scanning = true;
+
     video.setAttribute("playsinline", true);
     video.muted = true;
 
@@ -130,9 +127,9 @@ async function startScanner(){
 
     reader = new ZXing.BrowserMultiFormatReader();
 
-    loopScan();
+    scanLoop();
 
-    setStatus("Ready");
+    setStatus("Running");
   } catch (e) {
     console.error(e);
     alert("Camera error: " + e.message);
@@ -140,31 +137,42 @@ async function startScanner(){
 }
 
 /* =========================
-   SAFE LOOP (NO ZXING CONFLICT)
+   SCAN LOOP (SAFE CONTROLLED)
 ========================= */
-async function loopScan(){
-  if (!reader) return;
+async function scanLoop(){
+  if (!scanning || !reader) return;
 
   try {
     const result = await reader.decodeOnceFromVideoDevice(undefined, video);
 
-    if (result) {
+    if (result && !locked) {
       const text = result.getText().trim();
       const now = Date.now();
 
-      if (!locked || (text !== lastCode)) {
-        locked = true;
-        lastCode = text;
-        lastTime = now;
-
-        handleScan(text);
+      if (text === lastCode && now - lastTime < RESET_MS) {
+        scheduleNext();
+        return;
       }
+
+      locked = true;
+      lastCode = text;
+      lastTime = now;
+
+      handleScan(text);
     }
   } catch(e) {
     // ignore decode noise
   }
 
-  requestAnimationFrame(loopScan);
+  scheduleNext();
+}
+
+/* =========================
+   CONTROL LOOP TICK
+========================= */
+function scheduleNext(){
+  if (!scanning) return;
+  requestAnimationFrame(scanLoop);
 }
 
 /* =========================
@@ -177,7 +185,7 @@ function handleScan(text){
     send(text);
   }
 
-  // unlock ONLY after QR leaves frame + cooldown
+  // unlock after safe delay (not immediate)
   setTimeout(() => {
     locked = false;
   }, RESET_MS);
@@ -200,28 +208,43 @@ async function send(itemId){
     const r = await fetch(url);
     const d = await r.json();
 
-    if (d.success){
-      setStatus("✔ " + itemId);
-      navigator.vibrate?.(80);
-    } else {
-      setStatus("❌ " + (d.error || "Error"));
-    }
+    setStatus(d.success ? "✔ " + itemId : "❌ error");
   } catch(e){
     setStatus("Network error");
   }
 }
 
 /* =========================
-   STOP
+   STOP SCANNER (FULL FIX)
 ========================= */
 function stopScanner(){
+
+  // 1. STOP LOOP FIRST
+  scanning = false;
+
+  // 2. STOP ZXING
   try {
-    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (reader) {
+      reader.reset?.();
+      reader = null;
+    }
   } catch(e){}
 
-  reader = null;
+  // 3. STOP CAMERA STREAM
+  try {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+  } catch(e){}
+
+  // 4. DETACH VIDEO (CRITICAL FOR iOS)
+  video.pause?.();
+  video.srcObject = null;
+
+  // 5. RESET STATE
   stream = null;
   locked = false;
+  lastCode = "";
 
   setStatus("Stopped");
 }
