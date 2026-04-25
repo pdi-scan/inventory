@@ -187,12 +187,26 @@ async function send(itemId){
 
   try {
     const r = await fetch(url);
-    const d = await r.json();
 
-    alert(d.success ? "✔ Sent" : "❌ Error");
+    const text = await r.text();
+    console.log("RAW RESPONSE:", text);
+
+    let d;
+
+    try {
+      d = JSON.parse(text);
+    } catch(e) {
+      throw new Error("Invalid JSON response");
+    }
+
+    if (d.success) {
+      alert("✔ Sent (Remaining: " + d.remaining + ")");
+    } else {
+      alert("❌ " + (d.error || "Unknown error"));
+    }
 
   } catch(e){
-    alert("Network error");
+    alert("Request failed: " + e.message);
   }
 }
 
