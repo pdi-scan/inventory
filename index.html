@@ -1,105 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Warehouse Scanner</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZXing Warehouse Scanner</title>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"></script>
 
 <style>
-body { font-family:-apple-system; margin:0; background:#111; color:white; text-align:center; }
-header { padding:14px; font-weight:800; background:#000; }
+body { margin:0; font-family:-apple-system; background:#111; color:white; text-align:center; }
+header { padding:12px; font-weight:800; background:#000; }
 
-.container { padding:12px; }
-
-input {
-  width:100%; max-width:420px;
-  padding:14px; margin:6px auto;
-  border-radius:10px; border:none;
-  font-size:16px;
+video {
+  width:100%;
+  max-width:420px;
+  margin-top:10px;
+  border-radius:12px;
 }
 
-.button-row {
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:8px;
+input {
+  width:90%;
   max-width:420px;
-  margin:10px auto;
+  padding:12px;
+  margin:6px;
+  border-radius:8px;
+  border:none;
 }
 
 button {
-  padding:14px;
+  padding:12px;
+  margin:6px;
   border:none;
-  border-radius:12px;
+  border-radius:10px;
   font-weight:800;
 }
 
-#startBtn { background:#2563eb; color:white; }
-#exitBtn { background:#dc2626; color:white; }
-#torchBtn { background:#f59e0b; color:black; }
-
-#reader {
-  max-width:420px;
-  margin:10px auto;
-  border-radius:14px;
-  overflow:hidden;
-}
-
-#status {
-  margin-top:10px;
-  font-weight:700;
-  min-height:24px;
-}
-
-.flash {
-  animation:flash 0.2s;
-}
-@keyframes flash {
-  from { background:white; }
-  to { background:transparent; }
-}
+#status { margin-top:10px; font-weight:700; }
 </style>
 </head>
 
 <body>
 
-<header>📦 Warehouse Scanner</header>
-
-<div class="container">
+<header>📦 ZXing Scanner</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
-<input id="qty" type="number" value="1" min="1">
+<input id="qty" type="number" value="1">
 
-<div class="button-row">
-  <button id="startBtn">Start</button>
-  <button id="exitBtn">Exit</button>
-</div>
+<br>
 
-<div class="button-row">
-  <button id="torchBtn">Toggle Light</button>
-  <button id="modeBtn">Mode: Confirm</button>
-</div>
+<button id="startBtn">Start</button>
+<button id="exitBtn">Exit</button>
+<button id="modeBtn">Mode: Confirm</button>
 
-<div id="reader"></div>
+<video id="video" autoplay playsinline></video>
+
 <div id="status"></div>
-
-</div>
 
 <script>
 const API_URL = "YOUR_API_URL";
 
-let qr = null;
-let scanning = false;
+let codeReader = null;
+let videoStream = null;
+
 let scanLock = false;
 let lastScan = "";
 let lastTime = 0;
-
-let torchOn = false;
 let instantMode = false;
 
 const statusEl = document.getElementById("status");
+const video = document.getElementById("video");
 
 function setStatus(msg){
   statusEl.innerText = msg;
@@ -111,38 +81,47 @@ function beep(){
 
 function normalize(text){
   text = text.trim();
-
-  // extract ID from URL if needed
   try {
-    if (text.startsWith("http")) {
+    if (text.startsWith("http")){
       const url = new URL(text);
       text = url.pathname.split("/").pop();
     }
   } catch(e){}
-
   return text.toUpperCase();
 }
 
 /* ---------- START CAMERA ---------- */
-async function startCamera(){
-  if (scanning) return;
+async function startScanner(){
+  if (codeReader) return;
 
-  qr = qr || new Html5Qrcode("reader");
+  codeReader = new ZXingBrowser.BrowserMultiFormatReader();
 
   try {
-    await qr.start(
-      { facingMode:"environment" },
-      {
-        fps:15,
-        qrbox:(w,h)=>{
-          const s = Math.min(w,h)*0.75;
-          return { width:s, height:s };
-        }
-      },
-      onScan
-    );
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    });
 
-    scanning = true;
+    video.srcObject = stream;
+    videoStream = stream;
+
+    const track = stream.getVideoTracks()[0];
+
+    // Try torch
+    try {
+      await track.applyConstraints({ advanced:[{ torch:true }] });
+    } catch(e){}
+
+    // Decode loop
+    codeReader.decodeFromVideoElementContinuously(video, (result, err) => {
+      if (result){
+        handleScan(result.getText());
+      }
+    });
+
     setStatus("Ready");
   } catch(e){
     alert("Camera error: " + e.message);
@@ -150,11 +129,11 @@ async function startCamera(){
 }
 
 /* ---------- SCAN ---------- */
-function onScan(text){
+function handleScan(text){
   const now = Date.now();
 
   if (scanLock) return;
-  if (text === lastScan && now - lastTime < 1200) return;
+  if (text === lastScan && now - lastTime < 600) return;
 
   scanLock = true;
   lastScan = text;
@@ -162,14 +141,11 @@ function onScan(text){
 
   text = normalize(text);
 
-  document.body.classList.add("flash");
-  setTimeout(()=>document.body.classList.remove("flash"), 100);
-
   beep();
 
   if (instantMode){
     send(text);
-    setTimeout(()=>scanLock=false, 400);
+    setTimeout(()=>scanLock=false, 300);
   } else {
     if (confirm("Scan: " + text)){
       send(text);
@@ -195,54 +171,33 @@ async function send(itemId){
     if (d.success){
       setStatus("✔ " + itemId);
     } else {
-      setStatus("❌ " + (d.error || "Error"));
+      setStatus("❌ " + d.error);
     }
   } catch(e){
     setStatus("Network error");
   }
 }
 
-/* ---------- TORCH ---------- */
-document.getElementById("torchBtn").onclick = async () => {
-  if (!qr) return;
-
-  try {
-    const track = qr.getRunningTrack();
-    await track.applyConstraints({
-      advanced: [{ torch: !torchOn }]
-    });
-    torchOn = !torchOn;
-  } catch(e){
-    alert("Torch not supported");
-  }
-};
-
-/* ---------- MODE ---------- */
-document.getElementById("modeBtn").onclick = (e)=>{
-  instantMode = !instantMode;
-  e.target.innerText = instantMode ? "Mode: Instant" : "Mode: Confirm";
-};
-
-/* ---------- START / EXIT ---------- */
+/* ---------- BUTTONS ---------- */
 document.getElementById("startBtn").onclick = ()=>{
   if (!user.value || !po.value){
     alert("User + PO required");
     return;
   }
-  startCamera();
+  startScanner();
 };
 
-document.getElementById("exitBtn").onclick = async ()=>{
-  try {
-    if (qr && scanning){
-      await qr.stop();
-      await qr.clear();
-    }
-  } catch(e){}
-
-  scanning = false;
-  scanLock = false;
+document.getElementById("exitBtn").onclick = ()=>{
+  if (videoStream){
+    videoStream.getTracks().forEach(t => t.stop());
+  }
+  codeReader = null;
   setStatus("Stopped");
+};
+
+document.getElementById("modeBtn").onclick = (e)=>{
+  instantMode = !instantMode;
+  e.target.innerText = instantMode ? "Mode: Instant" : "Mode: Confirm";
 };
 </script>
 
