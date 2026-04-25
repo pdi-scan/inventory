@@ -144,7 +144,7 @@ const qtyEl  = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
 
 /* =========================
-   START BUTTON
+   START BUTTON GATE
 ========================= */
 function updateStartState(){
   startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
@@ -180,9 +180,7 @@ let reader = null;
 
 let scanning = false;
 let locked = false;
-
 let shuttingDown = false;
-let sending = false;
 
 let lastCode = "";
 const RESET_MS = 1200;
@@ -197,18 +195,13 @@ function saveQueue(){
   updateQueueUI();
 }
 
-/* =========================
-   HUD UPDATE
-========================= */
 function updateQueueUI(){
   document.getElementById("queueCount").innerText = queue.length;
 }
-
-/* init */
 updateQueueUI();
 
 /* =========================
-   START
+   START SCANNER
 ========================= */
 async function startScanner(){
 
@@ -231,7 +224,7 @@ async function startScanner(){
       }
     });
   } catch(e){
-    showToast("Camera access denied", "error");
+    showToast("Camera denied", "error");
     return;
   }
 
@@ -266,9 +259,7 @@ async function scanLoop(){
 
           handleScan(text);
 
-          setTimeout(() => {
-            locked = false;
-          }, RESET_MS);
+          setTimeout(() => locked = false, RESET_MS);
         }
       }
     }
@@ -282,24 +273,17 @@ async function scanLoop(){
    HANDLE SCAN
 ========================= */
 function handleScan(text){
-
-  if (sending) return;
-
-  sending = true;
-
-  setTimeout(() => sending = false, RESET_MS);
-
   showToast("Scanned: " + text);
-
   send(text);
 }
 
 /* =========================
-   SEND (OFFLINE SAFE)
+   SEND (DEDUP ENABLED SERVER SIDE)
 ========================= */
 async function send(itemId){
 
   const payload = {
+    scanId: crypto.randomUUID(),   // 🔐 server dedupe key
     itemId,
     qty: qtyEl.value || 1,
     po: poEl.value || "",
@@ -309,7 +293,8 @@ async function send(itemId){
 
   const url =
     API_URL +
-    "?itemId=" + encodeURIComponent(payload.itemId) +
+    "?scanId=" + encodeURIComponent(payload.scanId) +
+    "&itemId=" + encodeURIComponent(payload.itemId) +
     "&qty=" + encodeURIComponent(payload.qty) +
     "&po=" + encodeURIComponent(payload.po) +
     "&user=" + encodeURIComponent(payload.user);
@@ -325,8 +310,10 @@ async function send(itemId){
     }
 
   } catch(e){
+
     queue.push(payload);
     saveQueue();
+
     showToast("📦 Saved offline (" + queue.length + ")", "error");
   }
 }
@@ -350,7 +337,8 @@ async function flushQueue(){
 
     const url =
       API_URL +
-      "?itemId=" + encodeURIComponent(item.itemId) +
+      "?scanId=" + encodeURIComponent(item.scanId) +
+      "&itemId=" + encodeURIComponent(item.itemId) +
       "&qty=" + encodeURIComponent(item.qty) +
       "&po=" + encodeURIComponent(item.po) +
       "&user=" + encodeURIComponent(item.user);
