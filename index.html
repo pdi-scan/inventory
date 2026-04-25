@@ -56,6 +56,27 @@ input, button {
 button:disabled {
   opacity:0.5;
 }
+
+/* TOAST */
+#toast {
+  position:fixed;
+  bottom:30px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#111827;
+  color:white;
+  padding:12px 16px;
+  border-radius:10px;
+  font-weight:700;
+  opacity:0;
+  transition:0.25s;
+  z-index:9999;
+  max-width:90%;
+}
+
+#toast.show {
+  opacity:1;
+}
 </style>
 </head>
 
@@ -75,6 +96,8 @@ button:disabled {
   <div id="box"></div>
 </div>
 
+<div id="toast"></div>
+
 <script>
 /* =========================
    CONFIG
@@ -93,15 +116,30 @@ const startBtn = document.getElementById("startBtn");
    START BUTTON CONTROL
 ========================= */
 function updateStartState(){
-  const userFilled = userEl.value.trim().length > 0;
-  const poFilled   = poEl.value.trim().length > 0;
-
-  startBtn.disabled = !(userFilled && poFilled);
+  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
 }
-
 userEl.addEventListener("input", updateStartState);
 poEl.addEventListener("input", updateStartState);
 updateStartState();
+
+/* =========================
+   TOAST + VIBRATION
+========================= */
+function showToast(msg, type="normal"){
+  const t = document.getElementById("toast");
+  t.innerText = msg;
+
+  t.style.background =
+    type === "error" ? "#dc2626" :
+    type === "success" ? "#16a34a" :
+    "#111827";
+
+  t.classList.add("show");
+
+  setTimeout(() => t.classList.remove("show"), 1800);
+
+  if (navigator.vibrate) navigator.vibrate(80);
+}
 
 /* =========================
    STATE
@@ -124,20 +162,25 @@ const RESET_MS = 1200;
 async function startScanner(){
 
   if (!userEl.value.trim() || !poEl.value.trim()) {
-    alert("User and PO are required");
+    showToast("User and PO required", "error");
     return;
   }
 
   scanning = true;
   shuttingDown = false;
 
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: "environment",
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    }
-  });
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    });
+  } catch(e){
+    showToast("Camera access denied", "error");
+    return;
+  }
 
   document.getElementById("video").srcObject = stream;
 
@@ -177,13 +220,9 @@ async function scanLoop(){
       }
     }
 
-  } catch(e) {
-    // ignore decode errors
-  }
+  } catch(e) {}
 
-  if (scanning) {
-    requestAnimationFrame(scanLoop);
-  }
+  if (scanning) requestAnimationFrame(scanLoop);
 }
 
 /* =========================
@@ -199,13 +238,13 @@ function handleScan(text){
     sending = false;
   }, RESET_MS);
 
-  alert("Scanned: " + text);
+  showToast("Scanned: " + text);
 
   send(text);
 }
 
 /* =========================
-   SEND TO API
+   SEND
 ========================= */
 async function send(itemId){
 
@@ -220,23 +259,21 @@ async function send(itemId){
     const r = await fetch(url);
     const text = await r.text();
 
-    console.log("RAW RESPONSE:", text);
-
     let d;
     try {
       d = JSON.parse(text);
     } catch(e) {
-      throw new Error("Invalid JSON response");
+      throw new Error("Bad response");
     }
 
     if (d.success) {
-      alert("✔ Sent (Remaining: " + d.remaining + ")");
+      showToast("✔ " + itemId + " (Remain: " + d.remaining + ")", "success");
     } else {
-      alert("❌ " + (d.error || "Unknown error"));
+      showToast("❌ " + (d.error || "Error"), "error");
     }
 
   } catch(e){
-    alert("Request failed: " + e.message);
+    showToast("⚠ Network error", "error");
   }
 }
 
@@ -263,6 +300,8 @@ function stopScanner(){
   setTimeout(() => {
     shuttingDown = false;
   }, 800);
+
+  showToast("Scanner stopped");
 }
 </script>
 
