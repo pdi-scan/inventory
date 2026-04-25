@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Warehouse Zebra Scanner + API</title>
+<title>Warehouse Scanner FIXED</title>
 
 <script src="./js/zxing.min.js"></script>
 
@@ -30,20 +30,20 @@ video {
   background:black;
 }
 
-#wrap {
+#frame {
   position:relative;
   display:inline-block;
 }
 
-#overlay {
+#box {
   position:absolute;
-  inset:0;
-  border:2px solid rgba(0,255,0,0.6);
+  inset:15%;
+  border:3px solid rgba(0,255,0,0.7);
+  border-radius:10px;
   pointer-events:none;
-  box-sizing:border-box;
 }
 
-input {
+input, button {
   width:90%;
   max-width:420px;
   padding:12px;
@@ -51,21 +51,14 @@ input {
   border-radius:8px;
   border:none;
   display:block;
-}
-
-button {
-  padding:12px;
-  margin:6px;
-  border:none;
-  border-radius:10px;
-  font-weight:800;
+  font-weight:700;
 }
 </style>
 </head>
 
 <body>
 
-<header>📦 Warehouse Scanner (Zebra + API)</header>
+<header>📦 FIXED QR Scanner</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -73,40 +66,29 @@ button {
 
 <button onclick="startScanner()">Start</button>
 <button onclick="stopScanner()">Stop</button>
-<button onclick="toggleTorch()">Torch</button>
 
-<div id="wrap">
+<div id="frame">
   <video id="video" autoplay playsinline muted></video>
-  <div id="overlay"></div>
+  <div id="box"></div>
 </div>
 
 <script>
 /* =========================
-   API
+   CONFIG
 ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 /* =========================
-   ZXING + STATE
+   STATE
 ========================= */
-if (!window.ZXing) alert("ZXing failed to load");
-
-const codeReader = new ZXing.BrowserMultiFormatReader();
-
 let stream = null;
-let track = null;
+let reader = null;
 
 let scanning = false;
 let locked = false;
+
 let lastCode = "";
 const RESET_MS = 1200;
-
-/* canvas crop engine */
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d");
-
-/* torch */
-let torchOn = false;
 
 /* =========================
    START CAMERA
@@ -122,16 +104,15 @@ async function startScanner(){
     }
   });
 
-  const video = document.getElementById("video");
-  video.srcObject = stream;
+  document.getElementById("video").srcObject = stream;
 
-  track = stream.getVideoTracks()[0];
+  reader = new ZXing.BrowserMultiFormatReader();
 
   scanLoop();
 }
 
 /* =========================
-   SINGLE SHOT LOOP (ZEBRA ENGINE)
+   RELIABLE VIDEO SCAN LOOP
 ========================= */
 async function scanLoop(){
   if (!scanning) return;
@@ -139,34 +120,28 @@ async function scanLoop(){
   try {
     const video = document.getElementById("video");
 
-    if (video.readyState === 4) {
+    if (video.readyState === 4 && !locked) {
 
-      const w = video.videoWidth;
-      const h = video.videoHeight;
+      const result = await reader.decodeOnceFromVideoDevice(undefined, video);
 
-      const size = Math.floor(Math.min(w, h) * 0.65);
-      const sx = (w - size) / 2;
-      const sy = (h - size) / 2;
-
-      canvas.width = size;
-      canvas.height = size;
-
-      ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
-
-      const result = await codeReader.decodeFromCanvas(canvas);
-
-      if (result && !locked) {
-        locked = true;
-
+      if (result) {
         const text = result.getText().trim();
-        handleScan(text);
 
-        setTimeout(() => locked = false, RESET_MS);
+        if (text !== lastCode) {
+          locked = true;
+          lastCode = text;
+
+          handleScan(text);
+
+          setTimeout(() => {
+            locked = false;
+          }, RESET_MS);
+        }
       }
     }
 
   } catch(e) {
-    // ignore decode noise
+    // silent retry
   }
 
   if (scanning) {
@@ -179,7 +154,6 @@ async function scanLoop(){
 ========================= */
 function handleScan(text){
   alert("Scanned: " + text);
-
   send(text);
 }
 
@@ -198,38 +172,14 @@ async function send(itemId){
     const r = await fetch(url);
     const d = await r.json();
 
-    alert(d.success ? "✔ Sent: " + itemId : "❌ Error");
+    alert(d.success ? "✔ Sent" : "❌ Error");
   } catch(e){
     alert("Network error");
   }
 }
 
 /* =========================
-   TORCH
-========================= */
-async function toggleTorch(){
-  try {
-    if (!track) return;
-
-    const caps = track.getCapabilities?.();
-    if (!caps?.torch) {
-      alert("Torch not supported");
-      return;
-    }
-
-    torchOn = !torchOn;
-
-    await track.applyConstraints({
-      advanced: [{ torch: torchOn }]
-    });
-
-  } catch(e){
-    console.log(e);
-  }
-}
-
-/* =========================
-   STOP (FULL CLEANUP)
+   STOP
 ========================= */
 function stopScanner(){
   scanning = false;
@@ -243,8 +193,9 @@ function stopScanner(){
   document.getElementById("video").srcObject = null;
 
   stream = null;
-  track = null;
+  reader = null;
   locked = false;
+  lastCode = "";
 }
 </script>
 
