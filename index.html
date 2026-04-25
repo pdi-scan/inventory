@@ -52,6 +52,10 @@ input, button {
   border:none;
   font-weight:700;
 }
+
+button:disabled {
+  opacity:0.5;
+}
 </style>
 </head>
 
@@ -63,7 +67,7 @@ input, button {
 <input id="po" placeholder="PO">
 <input id="qty" type="number" value="1" min="1">
 
-<button onclick="startScanner()">Start</button>
+<button id="startBtn" onclick="startScanner()" disabled>Start</button>
 <button onclick="stopScanner()">Stop</button>
 
 <div id="frame">
@@ -76,6 +80,28 @@ input, button {
    CONFIG
 ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+
+/* =========================
+   DOM
+========================= */
+const userEl = document.getElementById("user");
+const poEl   = document.getElementById("po");
+const qtyEl  = document.getElementById("qty");
+const startBtn = document.getElementById("startBtn");
+
+/* =========================
+   START BUTTON CONTROL
+========================= */
+function updateStartState(){
+  const userFilled = userEl.value.trim().length > 0;
+  const poFilled   = poEl.value.trim().length > 0;
+
+  startBtn.disabled = !(userFilled && poFilled);
+}
+
+userEl.addEventListener("input", updateStartState);
+poEl.addEventListener("input", updateStartState);
+updateStartState();
 
 /* =========================
    STATE
@@ -96,6 +122,12 @@ const RESET_MS = 1200;
    START
 ========================= */
 async function startScanner(){
+
+  if (!userEl.value.trim() || !poEl.value.trim()) {
+    alert("User and PO are required");
+    return;
+  }
+
   scanning = true;
   shuttingDown = false;
 
@@ -115,7 +147,7 @@ async function startScanner(){
 }
 
 /* =========================
-   SCAN LOOP (STABLE)
+   SCAN LOOP
 ========================= */
 async function scanLoop(){
   if (!scanning) return;
@@ -130,7 +162,7 @@ async function scanLoop(){
       if (result) {
         const text = result.getText().trim();
 
-        if (shuttingDown) return; // 🚨 HARD STOP BARRIER
+        if (shuttingDown) return;
 
         if (text !== lastCode) {
           locked = true;
@@ -146,7 +178,7 @@ async function scanLoop(){
     }
 
   } catch(e) {
-    // silent retry
+    // ignore decode errors
   }
 
   if (scanning) {
@@ -155,11 +187,10 @@ async function scanLoop(){
 }
 
 /* =========================
-   SCAN HANDLER (NO DUPLICATES)
+   HANDLE SCAN
 ========================= */
 function handleScan(text){
 
-  // 🚨 prevent double send
   if (sending) return;
 
   sending = true;
@@ -174,25 +205,24 @@ function handleScan(text){
 }
 
 /* =========================
-   API SEND
+   SEND TO API
 ========================= */
 async function send(itemId){
 
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(document.getElementById("qty").value || 1) +
-    "&po=" + encodeURIComponent(document.getElementById("po").value || "") +
-    "&user=" + encodeURIComponent(document.getElementById("user").value || "");
+    "&qty=" + encodeURIComponent(qtyEl.value || 1) +
+    "&po=" + encodeURIComponent(poEl.value || "") +
+    "&user=" + encodeURIComponent(userEl.value || "");
 
   try {
     const r = await fetch(url);
-
     const text = await r.text();
+
     console.log("RAW RESPONSE:", text);
 
     let d;
-
     try {
       d = JSON.parse(text);
     } catch(e) {
@@ -211,7 +241,7 @@ async function send(itemId){
 }
 
 /* =========================
-   STOP (HARD SHUTDOWN)
+   STOP
 ========================= */
 function stopScanner(){
 
@@ -230,7 +260,6 @@ function stopScanner(){
   locked = false;
   lastCode = "";
 
-  // allow restart after async drain
   setTimeout(() => {
     shuttingDown = false;
   }, 800);
