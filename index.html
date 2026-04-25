@@ -3,22 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Loop-Free Scanner</title>
+<title>Warehouse Scanner</title>
 
 <script src="./js/zxing.min.js"></script>
 
 <style>
-body { margin:0; font-family:-apple-system; background:#111; color:white; text-align:center; }
-header { padding:12px; font-weight:800; background:#000; }
-video { width:100%; max-width:420px; border-radius:12px; margin-top:10px; }
-button { padding:12px; margin:6px; font-weight:800; border:none; border-radius:10px; }
-#status { margin-top:10px; }
+body {
+  margin:0;
+  font-family:-apple-system, Arial;
+  background:#111;
+  color:white;
+  text-align:center;
+}
+
+header {
+  padding:12px;
+  font-weight:800;
+  background:#000;
+}
+
+video {
+  width:100%;
+  max-width:420px;
+  margin-top:10px;
+  border-radius:12px;
+  background:black;
+}
+
+input {
+  width:90%;
+  max-width:420px;
+  padding:12px;
+  margin:6px auto;
+  border-radius:8px;
+  border:none;
+  display:block;
+}
+
+button {
+  padding:12px;
+  margin:6px;
+  border:none;
+  border-radius:10px;
+  font-weight:800;
+}
+
+#status {
+  margin-top:10px;
+  font-weight:700;
+}
 </style>
 </head>
 
 <body>
 
-<header>📦 Loop-Free Scanner</header>
+<header>📦 Warehouse Scanner</header>
+
+<input id="user" placeholder="User">
+<input id="po" placeholder="PO">
+<input id="qty" type="number" value="1" min="1">
 
 <button onclick="startScanner()">Start</button>
 <button onclick="stopScanner()">Stop</button>
@@ -28,44 +71,79 @@ button { padding:12px; margin:6px; font-weight:800; border:none; border-radius:1
 <div id="status"></div>
 
 <script>
-if (!window.ZXing) alert("ZXing not loaded");
+/* =========================
+   CONFIG
+========================= */
+const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
-const video = document.getElementById("video");
-const statusEl = document.getElementById("status");
+/* =========================
+   ZXING STATE
+========================= */
+if (!window.ZXing) {
+  alert("ZXing failed to load");
+}
 
-let reader;
-let stream;
+let reader = null;
+let stream = null;
 
-let scanning = false;
+/* =========================
+   SCAN STATE MACHINE
+========================= */
 let locked = false;
-let lastCode = null;
-let lastSeen = 0;
-
+let lastCode = "";
+let lastTime = 0;
 const RESET_MS = 1500;
 
 /* =========================
-   CAMERA
+   UI
 ========================= */
-async function startScanner(){
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" }
-  });
+const video = document.getElementById("video");
+const statusEl = document.getElementById("status");
 
-  video.srcObject = stream;
-
-  reader = new ZXing.BrowserMultiFormatReader();
-
-  scanning = true;
-  loopScan();
-
-  setStatus("Running");
+function setStatus(msg){
+  statusEl.innerText = msg;
 }
 
 /* =========================
-   MANUAL SCAN LOOP (KEY FIX)
+   iOS CAMERA UNLOCK
+========================= */
+async function unlockCamera(){
+  const temp = await navigator.mediaDevices.getUserMedia({ video:true });
+  temp.getTracks().forEach(t => t.stop());
+}
+
+/* =========================
+   START SCANNER
+========================= */
+async function startScanner(){
+  try {
+    video.setAttribute("playsinline", true);
+    video.muted = true;
+
+    await unlockCamera();
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
+
+    video.srcObject = stream;
+
+    reader = new ZXing.BrowserMultiFormatReader();
+
+    loopScan();
+
+    setStatus("Ready");
+  } catch (e) {
+    console.error(e);
+    alert("Camera error: " + e.message);
+  }
+}
+
+/* =========================
+   SAFE LOOP (NO ZXING CONFLICT)
 ========================= */
 async function loopScan(){
-  if (!scanning) return;
+  if (!reader) return;
 
   try {
     const result = await reader.decodeOnceFromVideoDevice(undefined, video);
@@ -77,50 +155,75 @@ async function loopScan(){
       if (!locked || (text !== lastCode)) {
         locked = true;
         lastCode = text;
-        lastSeen = now;
+        lastTime = now;
 
         handleScan(text);
       }
     }
   } catch(e) {
-    // ignore decode errors
+    // ignore decode noise
   }
 
   requestAnimationFrame(loopScan);
 }
 
 /* =========================
-   SCAN HANDLER
+   HANDLE SCAN
 ========================= */
 function handleScan(text){
   setStatus("Scanned: " + text);
 
-  if (confirm(text)) {
-    console.log("SEND:", text);
+  if (confirm("Scanned:\n" + text)) {
+    send(text);
   }
 
-  // unlock ONLY after QR disappears for long enough
+  // unlock ONLY after QR leaves frame + cooldown
   setTimeout(() => {
     locked = false;
   }, RESET_MS);
 }
 
 /* =========================
-   STOP
+   SEND TO API
 ========================= */
-function stopScanner(){
-  scanning = false;
+async function send(itemId){
+  setStatus("Sending...");
 
-  if (stream) stream.getTracks().forEach(t => t.stop());
+  const url =
+    API_URL +
+    "?itemId=" + encodeURIComponent(itemId) +
+    "&qty=" + encodeURIComponent(document.getElementById("qty").value || 1) +
+    "&po=" + encodeURIComponent(document.getElementById("po").value || "") +
+    "&user=" + encodeURIComponent(document.getElementById("user").value || "");
 
-  setStatus("Stopped");
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+
+    if (d.success){
+      setStatus("✔ " + itemId);
+      navigator.vibrate?.(80);
+    } else {
+      setStatus("❌ " + (d.error || "Error"));
+    }
+  } catch(e){
+    setStatus("Network error");
+  }
 }
 
 /* =========================
-   UI
+   STOP
 ========================= */
-function setStatus(msg){
-  statusEl.innerText = msg;
+function stopScanner(){
+  try {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+  } catch(e){}
+
+  reader = null;
+  stream = null;
+  locked = false;
+
+  setStatus("Stopped");
 }
 </script>
 
