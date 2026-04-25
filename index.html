@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Warehouse Scanner (Fixed Loop)</title>
+<title>Stable Warehouse Scanner</title>
 
 <script src="./js/zxing.min.js"></script>
 
@@ -57,7 +57,7 @@ button {
 
 <body>
 
-<header>📦 Warehouse Scanner 1</header>
+<header>📦 Stable Scanner (No Loop)</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -71,25 +71,23 @@ button {
 <div id="status"></div>
 
 <script>
-/* =========================
-   SAFETY CHECK
-========================= */
 if (!window.ZXing) {
   alert("ZXing failed to load");
 }
 
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
-
+/* =========================
+   STATE MACHINE
+========================= */
 let reader = null;
 let stream = null;
 
-/* =========================
-   SCAN STATE (CRITICAL FIX)
-========================= */
-let scanLocked = false;
 let lastScan = "";
-let lastTime = 0;
-let seenActiveCode = null;
+let lastSeenTime = 0;
+
+let locked = false;
+
+// IMPORTANT: requires QR to disappear fully before re-arming
+const RESET_MS = 1200;
 
 /* =========================
    UI
@@ -128,32 +126,42 @@ async function startScanner(){
     reader = new ZXing.BrowserMultiFormatReader();
 
     reader.decodeFromVideoElementContinuously(video, (result) => {
-      if (!result) return;
-
-      const text = result.getText().trim();
       const now = Date.now();
 
       /* =========================
-         HARD GUARD (FIX LOOP BUG)
+         NO RESULT FRAME
+         (KEY RESET LOGIC)
+      ========================= */
+      if (!result) {
+        if (locked && (now - lastSeenTime > RESET_MS)) {
+          locked = false; // QR fully left view → re-arm
+        }
+        return;
+      }
+
+      const text = result.getText().trim();
+
+      /* =========================
+         HARD GATE (PREVENT LOOP)
       ========================= */
 
-      // 1. Already processing scan → IGNORE EVERYTHING
-      if (scanLocked) return;
+      if (locked) return;
 
-      // 2. Same scan within short window → IGNORE
-      if (text === lastScan && now - lastTime < 2000) return;
+      // prevent same scan spam in short window
+      if (text === lastScan && now - lastSeenTime < RESET_MS) return;
 
-      // 3. Lock immediately (IMPORTANT: before UI)
-      scanLocked = true;
+      /* =========================
+         LOCK IMMEDIATELY
+      ========================= */
+      locked = true;
       lastScan = text;
-      lastTime = now;
-      seenActiveCode = text;
+      lastSeenTime = now;
 
       handleScan(text);
     });
 
     setStatus("Ready");
-  } catch(e){
+  } catch (e) {
     console.error(e);
     alert("Camera error: " + e.message);
   }
@@ -163,31 +171,21 @@ async function startScanner(){
    HANDLE SCAN
 ========================= */
 function handleScan(text){
+  setStatus("Scanned: " + text);
+
   if (confirm("Scanned:\n" + text)) {
     send(text);
   }
 
-  // IMPORTANT: unlock AFTER user finishes interacting
-  unlockScanAfterDelay();
-}
-
-/* =========================
-   UNLOCK LOGIC (KEY FIX)
-========================= */
-function unlockScanAfterDelay(){
-  setTimeout(() => {
-    scanLocked = false;
-    seenActiveCode = null;
-  }, 1200); // ensures QR has physically left frame
+  // IMPORTANT: do NOT unlock here
+  // unlock happens only when QR disappears from frame
 }
 
 /* =========================
    SEND
 ========================= */
 async function send(itemId){
-  setStatus("Sending...");
-
-  const url = API_URL +
+  const url = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec" +
     "?itemId=" + encodeURIComponent(itemId) +
     "&qty=" + encodeURIComponent(document.getElementById("qty").value) +
     "&po=" + encodeURIComponent(document.getElementById("po").value) +
@@ -197,30 +195,23 @@ async function send(itemId){
     const r = await fetch(url);
     const d = await r.json();
 
-    if (d.success){
-      setStatus("✔ " + itemId);
-      navigator.vibrate?.(80);
-    } else {
-      setStatus("❌ " + (d.error || "Error"));
-    }
+    setStatus(d.success ? "✔ " + itemId : "❌ error");
   } catch(e){
     setStatus("Network error");
   }
 }
 
 /* =========================
-   STOP SCANNER
+   STOP
 ========================= */
 function stopScanner(){
   try {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-    }
+    if (stream) stream.getTracks().forEach(t => t.stop());
   } catch(e){}
 
   reader = null;
   stream = null;
-  scanLocked = false;
+  locked = false;
 
   setStatus("Stopped");
 }
