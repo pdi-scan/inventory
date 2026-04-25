@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Warehouse Scanner FIXED</title>
+<title>Industrial Scanner Mode</title>
 
 <script src="./js/zxing.min.js"></script>
 
@@ -27,7 +27,6 @@ video {
   max-width:420px;
   border-radius:12px;
   margin-top:10px;
-  background:black;
 }
 
 #frame {
@@ -37,7 +36,7 @@ video {
 
 #box {
   position:absolute;
-  inset:15%;
+  inset:18%;
   border:3px solid rgba(0,255,0,0.7);
   border-radius:10px;
   pointer-events:none;
@@ -50,7 +49,6 @@ input, button {
   margin:6px auto;
   border-radius:8px;
   border:none;
-  display:block;
   font-weight:700;
 }
 </style>
@@ -58,7 +56,7 @@ input, button {
 
 <body>
 
-<header>📦 FIXED QR Scanner</header>
+<header>📦 Industrial Scanner Mode</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -88,7 +86,10 @@ let scanning = false;
 let locked = false;
 
 let lastCode = "";
-const RESET_MS = 1200;
+let lastTime = 0;
+
+/* performance tuning */
+const MIN_INTERVAL = 900; // prevents double scans
 
 /* =========================
    START CAMERA
@@ -112,7 +113,7 @@ async function startScanner(){
 }
 
 /* =========================
-   RELIABLE VIDEO SCAN LOOP
+   INDUSTRIAL SCAN LOOP
 ========================= */
 async function scanLoop(){
   if (!scanning) return;
@@ -125,40 +126,61 @@ async function scanLoop(){
       const result = await reader.decodeOnceFromVideoDevice(undefined, video);
 
       if (result) {
+
         const text = result.getText().trim();
+        const now = Date.now();
 
-        if (text !== lastCode) {
-          locked = true;
-          lastCode = text;
+        /* =========================
+           INDUSTRIAL GATE
+        ========================= */
 
-          handleScan(text);
-
-          setTimeout(() => {
-            locked = false;
-          }, RESET_MS);
+        // prevent duplicates
+        if (text === lastCode && now - lastTime < MIN_INTERVAL) {
+          return schedule();
         }
+
+        // lock immediately (first valid frame wins)
+        locked = true;
+        lastCode = text;
+        lastTime = now;
+
+        handleScan(text);
       }
     }
 
   } catch(e) {
-    // silent retry
+    // ignore decode noise
   }
 
-  if (scanning) {
-    requestAnimationFrame(scanLoop);
-  }
+  schedule();
 }
 
 /* =========================
-   SCAN HANDLER
+   LOOP CONTROL
+========================= */
+function schedule(){
+  if (scanning) requestAnimationFrame(scanLoop);
+}
+
+/* =========================
+   AUTO QUALITY GATE (SIMPLIFIED)
 ========================= */
 function handleScan(text){
-  alert("Scanned: " + text);
+  // “confidence simulation”:
+  // if ZXing returns text, we assume valid barcode (industrial assumption)
+
+  alert("SCANNED: " + text);
+
   send(text);
+
+  // unlock after short stabilization window
+  setTimeout(() => {
+    locked = false;
+  }, MIN_INTERVAL);
 }
 
 /* =========================
-   API SEND
+   API
 ========================= */
 async function send(itemId){
   const url =
@@ -185,9 +207,7 @@ function stopScanner(){
   scanning = false;
 
   try {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-    }
+    if (stream) stream.getTracks().forEach(t => t.stop());
   } catch(e){}
 
   document.getElementById("video").srcObject = null;
