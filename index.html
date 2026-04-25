@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Warehouse Scanner Stable</title>
+<title>Warehouse Scanner</title>
 
 <script src="./js/zxing.min.js"></script>
 
@@ -82,7 +82,7 @@ button:disabled {
 
 <body>
 
-<header>📦 Stable Warehouse Scanner</header>
+<header>📦 Warehouse Scanner</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -157,6 +157,15 @@ let lastCode = "";
 const RESET_MS = 1200;
 
 /* =========================
+   OFFLINE QUEUE
+========================= */
+let queue = JSON.parse(localStorage.getItem("scanQueue") || "[]");
+
+function saveQueue(){
+  localStorage.setItem("scanQueue", JSON.stringify(queue));
+}
+
+/* =========================
    START
 ========================= */
 async function startScanner(){
@@ -168,6 +177,8 @@ async function startScanner(){
 
   scanning = true;
   shuttingDown = false;
+
+  flushQueue(); // 🔥 retry any saved scans
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -244,38 +255,94 @@ function handleScan(text){
 }
 
 /* =========================
-   SEND
+   SEND (WITH OFFLINE SUPPORT)
 ========================= */
 async function send(itemId){
 
+  const payload = {
+    itemId,
+    qty: qtyEl.value || 1,
+    po: poEl.value || "",
+    user: userEl.value || "",
+    ts: Date.now()
+  };
+
   const url =
     API_URL +
-    "?itemId=" + encodeURIComponent(itemId) +
-    "&qty=" + encodeURIComponent(qtyEl.value || 1) +
-    "&po=" + encodeURIComponent(poEl.value || "") +
-    "&user=" + encodeURIComponent(userEl.value || "");
+    "?itemId=" + encodeURIComponent(payload.itemId) +
+    "&qty=" + encodeURIComponent(payload.qty) +
+    "&po=" + encodeURIComponent(payload.po) +
+    "&user=" + encodeURIComponent(payload.user);
 
   try {
     const r = await fetch(url);
     const text = await r.text();
 
-    let d;
-    try {
-      d = JSON.parse(text);
-    } catch(e) {
-      throw new Error("Bad response");
-    }
+    let d = JSON.parse(text);
 
     if (d.success) {
       showToast("✔ " + itemId + " (Remain: " + d.remaining + ")", "success");
     } else {
-      showToast("❌ " + (d.error || "Error"), "error");
+      throw new Error(d.error || "API error");
     }
 
   } catch(e){
-    showToast("⚠ Network error", "error");
+
+    // SAVE OFFLINE
+    queue.push(payload);
+    saveQueue();
+
+    showToast("📦 Saved offline (" + queue.length + ")", "error");
   }
 }
+
+/* =========================
+   FLUSH QUEUE
+========================= */
+async function flushQueue(){
+
+  if (!navigator.onLine || queue.length === 0) return;
+
+  showToast("Syncing " + queue.length + "...");
+
+  let remaining = [];
+
+  for (const item of queue){
+
+    const url =
+      API_URL +
+      "?itemId=" + encodeURIComponent(item.itemId) +
+      "&qty=" + encodeURIComponent(item.qty) +
+      "&po=" + encodeURIComponent(item.po) +
+      "&user=" + encodeURIComponent(item.user);
+
+    try {
+      const r = await fetch(url);
+      const text = await r.text();
+      const d = JSON.parse(text);
+
+      if (!d.success) throw new Error();
+
+    } catch(e){
+      remaining.push(item);
+    }
+  }
+
+  queue = remaining;
+  saveQueue();
+
+  if (queue.length === 0) {
+    showToast("✅ Sync complete", "success");
+  } else {
+    showToast("⚠ " + queue.length + " pending", "error");
+  }
+}
+
+/* =========================
+   AUTO RETRY
+========================= */
+window.addEventListener("load", flushQueue);
+window.addEventListener("online", flushQueue);
 
 /* =========================
    STOP
