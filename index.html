@@ -3,14 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZXing iPhone Scanner</title>
+<title>Warehouse ZXing Scanner</title>
 
-<!-- Reliable CDN -->
+<!-- LOCAL ZXING (NO CDN) -->
 <script src="./js/zxing.min.js"></script>
 
 <style>
-body { margin:0; font-family:-apple-system; background:#111; color:white; text-align:center; }
-header { padding:12px; font-weight:800; background:#000; }
+body {
+  margin:0;
+  font-family:-apple-system, Arial;
+  background:#111;
+  color:white;
+  text-align:center;
+}
+
+header {
+  background:#000;
+  padding:12px;
+  font-weight:800;
+}
 
 video {
   width:100%;
@@ -24,9 +35,10 @@ input {
   width:90%;
   max-width:420px;
   padding:12px;
-  margin:6px;
+  margin:6px auto;
   border-radius:8px;
   border:none;
+  display:block;
 }
 
 button {
@@ -37,150 +49,120 @@ button {
   font-weight:800;
 }
 
-#status { margin-top:10px; font-weight:700; min-height:24px; }
+#status {
+  margin-top:10px;
+  font-weight:700;
+}
 </style>
 </head>
 
 <body>
 
-<header>📦 ZXing Scanner 3</header>
+<header>📦 Warehouse Scanner</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
-<input id="qty" type="number" value="1">
-
-<br>
+<input id="qty" type="number" value="1" min="1">
 
 <button id="startBtn">Start</button>
-<button id="exitBtn">Exit</button>
-<button id="modeBtn">Mode: Confirm</button>
+<button id="stopBtn">Stop</button>
 
 <video id="video" autoplay playsinline muted></video>
 
 <div id="status"></div>
 
 <script>
-/* ---------- VERIFY ZXING LOADED ---------- */
-if (typeof ZXingBrowser === "undefined") {
-  alert("ZXing failed to load. Check network or CDN.");
+/* =========================
+   CHECK ZXING LOADED
+========================= */
+if (!window.ZXing) {
+  alert("ZXing failed to load. Check local file path: ./js/zxing.min.js");
 }
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
-let codeReader = null;
-let videoStream = null;
+let reader = null;
+let stream = null;
 
-let scanLock = false;
 let lastScan = "";
 let lastTime = 0;
-let instantMode = false;
+let scanLock = false;
 
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
 
-/* ---------- UI ---------- */
 function setStatus(msg){
   statusEl.innerText = msg;
 }
 
-function beep(){
-  navigator.vibrate?.(80);
-}
-
-/* ---------- NORMALIZE ---------- */
-function normalize(text){
-  text = text.trim();
-
-  try {
-    if (text.startsWith("http")){
-      const url = new URL(text);
-      text = url.pathname.split("/").pop();
-    }
-  } catch(e){}
-
-  return text.toUpperCase();
-}
-
-/* ---------- FORCE PERMISSION ---------- */
+/* =========================
+   CAMERA PERMISSION UNLOCK
+========================= */
 async function unlockCamera(){
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video:true });
-    stream.getTracks().forEach(t => t.stop());
-    console.log("Camera permission granted");
-  } catch(e){
-    alert("Camera permission error: " + e.message);
-    throw e;
-  }
+  const tempStream = await navigator.mediaDevices.getUserMedia({
+    video: true
+  });
+  tempStream.getTracks().forEach(t => t.stop());
 }
 
-/* ---------- START SCANNER ---------- */
+/* =========================
+   START SCANNER
+========================= */
 async function startScanner(){
-  if (codeReader) return;
-
   try {
-    // iPhone critical flags
     video.setAttribute("playsinline", true);
     video.muted = true;
-    video.autoplay = true;
 
     await unlockCamera();
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode:"environment" }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
     });
 
     video.srcObject = stream;
-    videoStream = stream;
 
-    // Torch attempt (safe)
-    const track = stream.getVideoTracks()[0];
-    try {
-      await track.applyConstraints({ advanced:[{ torch:true }] });
-    } catch(e){}
+    /* IMPORTANT: correct ZXing global */
+    reader = new ZXing.BrowserMultiFormatReader();
 
-    // Start ZXing
-    codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+    reader.decodeFromVideoElementContinuously(video, (result) => {
+      if (!result) return;
 
-    codeReader.decodeFromVideoElementContinuously(video, (result, err) => {
-      if (result){
-        handleScan(result.getText());
-      }
+      const now = Date.now();
+      const text = result.getText();
+
+      if (scanLock) return;
+      if (text === lastScan && now - lastTime < 800) return;
+
+      scanLock = true;
+      lastScan = text;
+      lastTime = now;
+
+      handleScan(text);
+
+      setTimeout(() => scanLock = false, 400);
     });
 
-    setStatus("Ready");
-  } catch(e){
+    setStatus("Scanner ready");
+  } catch (e) {
     console.error(e);
-    alert("Camera error: " + e.name + " - " + e.message);
+    alert("Camera error: " + e.message);
   }
 }
 
-/* ---------- SCAN ---------- */
+/* =========================
+   HANDLE SCAN
+========================= */
 function handleScan(text){
-  const now = Date.now();
+  text = text.trim();
 
-  if (scanLock) return;
-  if (text === lastScan && now - lastTime < 600) return;
-
-  scanLock = true;
-  lastScan = text;
-  lastTime = now;
-
-  text = normalize(text);
-
-  beep();
-
-  if (instantMode){
+  if (confirm("Scanned:\n" + text)) {
     send(text);
-    setTimeout(()=>scanLock=false, 300);
-  } else {
-    if (confirm("Scan: " + text)){
-      send(text);
-    }
-    scanLock = false;
   }
 }
 
-/* ---------- SEND ---------- */
+/* =========================
+   SEND TO API
+========================= */
 async function send(itemId){
   setStatus("Sending...");
 
@@ -196,39 +178,36 @@ async function send(itemId){
 
     if (d.success){
       setStatus("✔ " + itemId);
+      navigator.vibrate?.(80);
     } else {
       setStatus("❌ " + (d.error || "Error"));
     }
-  } catch(e){
+  } catch (e) {
     setStatus("Network error");
   }
 }
 
-/* ---------- BUTTONS ---------- */
-document.getElementById("startBtn").onclick = async ()=>{
-  if (!user.value || !po.value){
-    alert("User + PO required");
-    return;
-  }
-  await startScanner();
-};
-
-document.getElementById("exitBtn").onclick = ()=>{
+/* =========================
+   STOP SCANNER
+========================= */
+function stopScanner(){
   try {
-    if (videoStream){
-      videoStream.getTracks().forEach(t => t.stop());
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
     }
   } catch(e){}
 
-  codeReader = null;
-  videoStream = null;
-  setStatus("Stopped");
-};
+  reader = null;
+  stream = null;
 
-document.getElementById("modeBtn").onclick = (e)=>{
-  instantMode = !instantMode;
-  e.target.innerText = instantMode ? "Mode: Instant" : "Mode: Confirm";
-};
+  setStatus("Stopped");
+}
+
+/* =========================
+   BUTTONS
+========================= */
+document.getElementById("startBtn").onclick = startScanner;
+document.getElementById("stopBtn").onclick = stopScanner;
 </script>
 
 </body>
