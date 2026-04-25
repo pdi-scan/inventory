@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ZXing iPhone Scanner</title>
 
-<script src="https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"></script>
+<!-- Reliable CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js"></script>
 
 <style>
 body { margin:0; font-family:-apple-system; background:#111; color:white; text-align:center; }
@@ -59,7 +60,12 @@ button {
 <div id="status"></div>
 
 <script>
-const API_URL = "YOUR_API_URL";
+/* ---------- VERIFY ZXING LOADED ---------- */
+if (typeof ZXingBrowser === "undefined") {
+  alert("ZXing failed to load. Check network or CDN.");
+}
+
+const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 let codeReader = null;
 let videoStream = null;
@@ -72,7 +78,7 @@ let instantMode = false;
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
 
-/* ---------- BASIC UI ---------- */
+/* ---------- UI ---------- */
 function setStatus(msg){
   statusEl.innerText = msg;
 }
@@ -95,15 +101,13 @@ function normalize(text){
   return text.toUpperCase();
 }
 
-/* ---------- FORCE CAMERA PERMISSION ---------- */
+/* ---------- FORCE PERMISSION ---------- */
 async function unlockCamera(){
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true
-    });
+    const stream = await navigator.mediaDevices.getUserMedia({ video:true });
     stream.getTracks().forEach(t => t.stop());
     console.log("Camera permission granted");
-  } catch (e) {
+  } catch(e){
     alert("Camera permission error: " + e.message);
     throw e;
   }
@@ -113,32 +117,26 @@ async function unlockCamera(){
 async function startScanner(){
   if (codeReader) return;
 
-  console.log("Starting scanner...");
-
   try {
-    // iPhone fix: ensure attributes are set
+    // iPhone critical flags
     video.setAttribute("playsinline", true);
     video.muted = true;
     video.autoplay = true;
 
-    // Force permission prompt
     await unlockCamera();
 
-    // Get camera stream (simple constraints = more reliable)
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }
+      video: { facingMode:"environment" }
     });
 
     video.srcObject = stream;
     videoStream = stream;
 
-    // Try torch (may fail silently)
+    // Torch attempt (safe)
     const track = stream.getVideoTracks()[0];
     try {
       await track.applyConstraints({ advanced:[{ torch:true }] });
-    } catch(e){
-      console.log("Torch not supported");
-    }
+    } catch(e){}
 
     // Start ZXing
     codeReader = new ZXingBrowser.BrowserMultiFormatReader();
@@ -156,7 +154,7 @@ async function startScanner(){
   }
 }
 
-/* ---------- SCAN HANDLER ---------- */
+/* ---------- SCAN ---------- */
 function handleScan(text){
   const now = Date.now();
 
@@ -212,7 +210,6 @@ document.getElementById("startBtn").onclick = async ()=>{
     alert("User + PO required");
     return;
   }
-
   await startScanner();
 };
 
@@ -225,7 +222,6 @@ document.getElementById("exitBtn").onclick = ()=>{
 
   codeReader = null;
   videoStream = null;
-
   setStatus("Stopped");
 };
 
