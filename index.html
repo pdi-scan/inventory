@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZXing Warehouse Scanner</title>
+<title>ZXing iPhone Scanner</title>
 
 <script src="https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js"></script>
 
@@ -16,6 +16,7 @@ video {
   max-width:420px;
   margin-top:10px;
   border-radius:12px;
+  background:black;
 }
 
 input {
@@ -35,13 +36,13 @@ button {
   font-weight:800;
 }
 
-#status { margin-top:10px; font-weight:700; }
+#status { margin-top:10px; font-weight:700; min-height:24px; }
 </style>
 </head>
 
 <body>
 
-<header>📦 ZXing Scanner</header>
+<header>📦 ZXing Scanner (iPhone Stable)</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -53,7 +54,7 @@ button {
 <button id="exitBtn">Exit</button>
 <button id="modeBtn">Mode: Confirm</button>
 
-<video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline muted></video>
 
 <div id="status"></div>
 
@@ -68,9 +69,10 @@ let lastScan = "";
 let lastTime = 0;
 let instantMode = false;
 
-const statusEl = document.getElementById("status");
 const video = document.getElementById("video");
+const statusEl = document.getElementById("status");
 
+/* ---------- BASIC UI ---------- */
 function setStatus(msg){
   statusEl.innerText = msg;
 }
@@ -79,43 +81,68 @@ function beep(){
   navigator.vibrate?.(80);
 }
 
+/* ---------- NORMALIZE ---------- */
 function normalize(text){
   text = text.trim();
+
   try {
     if (text.startsWith("http")){
       const url = new URL(text);
       text = url.pathname.split("/").pop();
     }
   } catch(e){}
+
   return text.toUpperCase();
 }
 
-/* ---------- START CAMERA ---------- */
+/* ---------- FORCE CAMERA PERMISSION ---------- */
+async function unlockCamera(){
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true
+    });
+    stream.getTracks().forEach(t => t.stop());
+    console.log("Camera permission granted");
+  } catch (e) {
+    alert("Camera permission error: " + e.message);
+    throw e;
+  }
+}
+
+/* ---------- START SCANNER ---------- */
 async function startScanner(){
   if (codeReader) return;
 
-  codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+  console.log("Starting scanner...");
 
   try {
+    // iPhone fix: ensure attributes are set
+    video.setAttribute("playsinline", true);
+    video.muted = true;
+    video.autoplay = true;
+
+    // Force permission prompt
+    await unlockCamera();
+
+    // Get camera stream (simple constraints = more reliable)
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
+      video: { facingMode: "environment" }
     });
 
     video.srcObject = stream;
     videoStream = stream;
 
+    // Try torch (may fail silently)
     const track = stream.getVideoTracks()[0];
-
-    // Try torch
     try {
       await track.applyConstraints({ advanced:[{ torch:true }] });
-    } catch(e){}
+    } catch(e){
+      console.log("Torch not supported");
+    }
 
-    // Decode loop
+    // Start ZXing
+    codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+
     codeReader.decodeFromVideoElementContinuously(video, (result, err) => {
       if (result){
         handleScan(result.getText());
@@ -124,11 +151,12 @@ async function startScanner(){
 
     setStatus("Ready");
   } catch(e){
-    alert("Camera error: " + e.message);
+    console.error(e);
+    alert("Camera error: " + e.name + " - " + e.message);
   }
 }
 
-/* ---------- SCAN ---------- */
+/* ---------- SCAN HANDLER ---------- */
 function handleScan(text){
   const now = Date.now();
 
@@ -171,7 +199,7 @@ async function send(itemId){
     if (d.success){
       setStatus("✔ " + itemId);
     } else {
-      setStatus("❌ " + d.error);
+      setStatus("❌ " + (d.error || "Error"));
     }
   } catch(e){
     setStatus("Network error");
@@ -179,19 +207,25 @@ async function send(itemId){
 }
 
 /* ---------- BUTTONS ---------- */
-document.getElementById("startBtn").onclick = ()=>{
+document.getElementById("startBtn").onclick = async ()=>{
   if (!user.value || !po.value){
     alert("User + PO required");
     return;
   }
-  startScanner();
+
+  await startScanner();
 };
 
 document.getElementById("exitBtn").onclick = ()=>{
-  if (videoStream){
-    videoStream.getTracks().forEach(t => t.stop());
-  }
+  try {
+    if (videoStream){
+      videoStream.getTracks().forEach(t => t.stop());
+    }
+  } catch(e){}
+
   codeReader = null;
+  videoStream = null;
+
   setStatus("Stopped");
 };
 
