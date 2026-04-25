@@ -77,12 +77,37 @@ button:disabled {
 #toast.show {
   opacity:1;
 }
+
+/* HUD */
+#hud {
+  position:fixed;
+  top:10px;
+  right:10px;
+  background:#111827;
+  padding:8px 12px;
+  border-radius:10px;
+  font-size:14px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  z-index:9999;
+}
+
+#syncBtn {
+  padding:6px 10px;
+  font-size:12px;
+  border-radius:6px;
+  border:none;
+  background:#2563eb;
+  color:white;
+  font-weight:700;
+}
 </style>
 </head>
 
 <body>
 
-<header>📦 PDI Warehouse Scanner</header>
+<header>📦 Warehouse Scanner</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -94,6 +119,12 @@ button:disabled {
 <div id="frame">
   <video id="video" autoplay playsinline muted></video>
   <div id="box"></div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  📦 Pending: <span id="queueCount">0</span>
+  <button id="syncBtn" onclick="flushQueue()">Sync</button>
 </div>
 
 <div id="toast"></div>
@@ -113,7 +144,7 @@ const qtyEl  = document.getElementById("qty");
 const startBtn = document.getElementById("startBtn");
 
 /* =========================
-   START BUTTON CONTROL
+   START BUTTON
 ========================= */
 function updateStartState(){
   startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
@@ -163,7 +194,18 @@ let queue = JSON.parse(localStorage.getItem("scanQueue") || "[]");
 
 function saveQueue(){
   localStorage.setItem("scanQueue", JSON.stringify(queue));
+  updateQueueUI();
 }
+
+/* =========================
+   HUD UPDATE
+========================= */
+function updateQueueUI(){
+  document.getElementById("queueCount").innerText = queue.length;
+}
+
+/* init */
+updateQueueUI();
 
 /* =========================
    START
@@ -178,7 +220,7 @@ async function startScanner(){
   scanning = true;
   shuttingDown = false;
 
-  flushQueue(); // 🔥 retry any saved scans
+  flushQueue();
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -245,9 +287,7 @@ function handleScan(text){
 
   sending = true;
 
-  setTimeout(() => {
-    sending = false;
-  }, RESET_MS);
+  setTimeout(() => sending = false, RESET_MS);
 
   showToast("Scanned: " + text);
 
@@ -255,7 +295,7 @@ function handleScan(text){
 }
 
 /* =========================
-   SEND (WITH OFFLINE SUPPORT)
+   SEND (OFFLINE SAFE)
 ========================= */
 async function send(itemId){
 
@@ -276,22 +316,17 @@ async function send(itemId){
 
   try {
     const r = await fetch(url);
-    const text = await r.text();
-
-    let d = JSON.parse(text);
+    const d = JSON.parse(await r.text());
 
     if (d.success) {
       showToast("✔ " + itemId + " (Remain: " + d.remaining + ")", "success");
     } else {
-      throw new Error(d.error || "API error");
+      throw new Error();
     }
 
   } catch(e){
-
-    // SAVE OFFLINE
     queue.push(payload);
     saveQueue();
-
     showToast("📦 Saved offline (" + queue.length + ")", "error");
   }
 }
@@ -302,6 +337,10 @@ async function send(itemId){
 async function flushQueue(){
 
   if (!navigator.onLine || queue.length === 0) return;
+
+  const btn = document.getElementById("syncBtn");
+  btn.disabled = true;
+  btn.innerText = "Syncing...";
 
   showToast("Syncing " + queue.length + "...");
 
@@ -317,12 +356,8 @@ async function flushQueue(){
       "&user=" + encodeURIComponent(item.user);
 
     try {
-      const r = await fetch(url);
-      const text = await r.text();
-      const d = JSON.parse(text);
-
+      const d = JSON.parse(await (await fetch(url)).text());
       if (!d.success) throw new Error();
-
     } catch(e){
       remaining.push(item);
     }
@@ -330,6 +365,9 @@ async function flushQueue(){
 
   queue = remaining;
   saveQueue();
+
+  btn.disabled = false;
+  btn.innerText = "Sync";
 
   if (queue.length === 0) {
     showToast("✅ Sync complete", "success");
@@ -339,7 +377,7 @@ async function flushQueue(){
 }
 
 /* =========================
-   AUTO RETRY
+   AUTO SYNC
 ========================= */
 window.addEventListener("load", flushQueue);
 window.addEventListener("online", flushQueue);
@@ -364,9 +402,7 @@ function stopScanner(){
   locked = false;
   lastCode = "";
 
-  setTimeout(() => {
-    shuttingDown = false;
-  }, 800);
+  setTimeout(() => shuttingDown = false, 800);
 
   showToast("Scanner stopped");
 }
