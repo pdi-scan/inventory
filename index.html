@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Warehouse ZXing Scanner</title>
+<title>Warehouse Scanner (Fixed Loop)</title>
 
-<!-- LOCAL ZXING (NO CDN) -->
 <script src="./js/zxing.min.js"></script>
 
 <style>
@@ -18,9 +17,9 @@ body {
 }
 
 header {
-  background:#000;
   padding:12px;
   font-weight:800;
+  background:#000;
 }
 
 video {
@@ -58,7 +57,7 @@ button {
 
 <body>
 
-<header>📦 Warehouse Scanner</header>
+<header>📦 Warehouse Scanner 1</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -73,10 +72,10 @@ button {
 
 <script>
 /* =========================
-   CHECK ZXING LOADED
+   SAFETY CHECK
 ========================= */
 if (!window.ZXing) {
-  alert("ZXing failed to load. Check local file path: ./js/zxing.min.js");
+  alert("ZXing failed to load");
 }
 
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
@@ -84,10 +83,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4
 let reader = null;
 let stream = null;
 
+/* =========================
+   SCAN STATE (CRITICAL FIX)
+========================= */
+let scanLocked = false;
 let lastScan = "";
 let lastTime = 0;
-let scanLock = false;
+let seenActiveCode = null;
 
+/* =========================
+   UI
+========================= */
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
 
@@ -96,13 +102,11 @@ function setStatus(msg){
 }
 
 /* =========================
-   CAMERA PERMISSION UNLOCK
+   CAMERA UNLOCK (iOS FIX)
 ========================= */
 async function unlockCamera(){
-  const tempStream = await navigator.mediaDevices.getUserMedia({
-    video: true
-  });
-  tempStream.getTracks().forEach(t => t.stop());
+  const temp = await navigator.mediaDevices.getUserMedia({ video:true });
+  temp.getTracks().forEach(t => t.stop());
 }
 
 /* =========================
@@ -121,29 +125,35 @@ async function startScanner(){
 
     video.srcObject = stream;
 
-    /* IMPORTANT: correct ZXing global */
     reader = new ZXing.BrowserMultiFormatReader();
 
     reader.decodeFromVideoElementContinuously(video, (result) => {
       if (!result) return;
 
+      const text = result.getText().trim();
       const now = Date.now();
-      const text = result.getText();
 
-      if (scanLock) return;
-      if (text === lastScan && now - lastTime < 800) return;
+      /* =========================
+         HARD GUARD (FIX LOOP BUG)
+      ========================= */
 
-      scanLock = true;
+      // 1. Already processing scan → IGNORE EVERYTHING
+      if (scanLocked) return;
+
+      // 2. Same scan within short window → IGNORE
+      if (text === lastScan && now - lastTime < 2000) return;
+
+      // 3. Lock immediately (IMPORTANT: before UI)
+      scanLocked = true;
       lastScan = text;
       lastTime = now;
+      seenActiveCode = text;
 
       handleScan(text);
-
-      setTimeout(() => scanLock = false, 400);
     });
 
-    setStatus("Scanner ready");
-  } catch (e) {
+    setStatus("Ready");
+  } catch(e){
     console.error(e);
     alert("Camera error: " + e.message);
   }
@@ -153,15 +163,26 @@ async function startScanner(){
    HANDLE SCAN
 ========================= */
 function handleScan(text){
-  text = text.trim();
-
   if (confirm("Scanned:\n" + text)) {
     send(text);
   }
+
+  // IMPORTANT: unlock AFTER user finishes interacting
+  unlockScanAfterDelay();
 }
 
 /* =========================
-   SEND TO API
+   UNLOCK LOGIC (KEY FIX)
+========================= */
+function unlockScanAfterDelay(){
+  setTimeout(() => {
+    scanLocked = false;
+    seenActiveCode = null;
+  }, 1200); // ensures QR has physically left frame
+}
+
+/* =========================
+   SEND
 ========================= */
 async function send(itemId){
   setStatus("Sending...");
@@ -182,7 +203,7 @@ async function send(itemId){
     } else {
       setStatus("❌ " + (d.error || "Error"));
     }
-  } catch (e) {
+  } catch(e){
     setStatus("Network error");
   }
 }
@@ -199,6 +220,7 @@ function stopScanner(){
 
   reader = null;
   stream = null;
+  scanLocked = false;
 
   setStatus("Stopped");
 }
