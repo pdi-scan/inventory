@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Warehouse Scanner (Stable)</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Warehouse Zebra Scanner + API</title>
 
 <script src="./js/zxing.min.js"></script>
 
 <style>
 body {
   margin:0;
-  font-family:-apple-system, Arial;
+  font-family:-apple-system;
   background:#111;
   color:white;
   text-align:center;
@@ -25,9 +25,22 @@ header {
 video {
   width:100%;
   max-width:420px;
-  margin-top:10px;
   border-radius:12px;
+  margin-top:10px;
   background:black;
+}
+
+#wrap {
+  position:relative;
+  display:inline-block;
+}
+
+#overlay {
+  position:absolute;
+  inset:0;
+  border:2px solid rgba(0,255,0,0.6);
+  pointer-events:none;
+  box-sizing:border-box;
 }
 
 input {
@@ -47,17 +60,12 @@ button {
   border-radius:10px;
   font-weight:800;
 }
-
-#status {
-  margin-top:10px;
-  font-weight:700;
-}
 </style>
 </head>
 
 <body>
 
-<header>📦 Warehouse Scanner</header>
+<header>📦 Warehouse Scanner (Zebra + API)</header>
 
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
@@ -65,138 +73,120 @@ button {
 
 <button onclick="startScanner()">Start</button>
 <button onclick="stopScanner()">Stop</button>
+<button onclick="toggleTorch()">Torch</button>
 
-<video id="video" autoplay playsinline muted></video>
-
-<div id="status"></div>
+<div id="wrap">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="overlay"></div>
+</div>
 
 <script>
 /* =========================
-   CONFIG
+   API
 ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 /* =========================
-   GLOBAL STATE
+   ZXING + STATE
 ========================= */
-let reader = null;
-let stream = null;
-let scanning = false;
+if (!window.ZXing) alert("ZXing failed to load");
 
+const codeReader = new ZXing.BrowserMultiFormatReader();
+
+let stream = null;
+let track = null;
+
+let scanning = false;
 let locked = false;
 let lastCode = "";
-let lastTime = 0;
+const RESET_MS = 1200;
 
-const RESET_MS = 1500;
+/* canvas crop engine */
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d");
 
-/* =========================
-   UI
-========================= */
-const video = document.getElementById("video");
-const statusEl = document.getElementById("status");
-
-function setStatus(msg){
-  statusEl.innerText = msg;
-}
+/* torch */
+let torchOn = false;
 
 /* =========================
-   iOS CAMERA UNLOCK
-========================= */
-async function unlockCamera(){
-  const temp = await navigator.mediaDevices.getUserMedia({ video:true });
-  temp.getTracks().forEach(t => t.stop());
-}
-
-/* =========================
-   START SCANNER
+   START CAMERA
 ========================= */
 async function startScanner(){
-  try {
-    scanning = true;
+  scanning = true;
 
-    video.setAttribute("playsinline", true);
-    video.muted = true;
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    }
+  });
 
-    await unlockCamera();
+  const video = document.getElementById("video");
+  video.srcObject = stream;
 
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }
-    });
+  track = stream.getVideoTracks()[0];
 
-    video.srcObject = stream;
-
-    reader = new ZXing.BrowserMultiFormatReader();
-
-    scanLoop();
-
-    setStatus("Running");
-  } catch (e) {
-    console.error(e);
-    alert("Camera error: " + e.message);
-  }
+  scanLoop();
 }
 
 /* =========================
-   SCAN LOOP (SAFE CONTROLLED)
+   SINGLE SHOT LOOP (ZEBRA ENGINE)
 ========================= */
 async function scanLoop(){
-  if (!scanning || !reader) return;
+  if (!scanning) return;
 
   try {
-    const result = await reader.decodeOnceFromVideoDevice(undefined, video);
+    const video = document.getElementById("video");
 
-    if (result && !locked) {
-      const text = result.getText().trim();
-      const now = Date.now();
+    if (video.readyState === 4) {
 
-      if (text === lastCode && now - lastTime < RESET_MS) {
-        scheduleNext();
-        return;
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+
+      const size = Math.floor(Math.min(w, h) * 0.65);
+      const sx = (w - size) / 2;
+      const sy = (h - size) / 2;
+
+      canvas.width = size;
+      canvas.height = size;
+
+      ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
+
+      const result = await codeReader.decodeFromCanvas(canvas);
+
+      if (result && !locked) {
+        locked = true;
+
+        const text = result.getText().trim();
+        handleScan(text);
+
+        setTimeout(() => locked = false, RESET_MS);
       }
-
-      locked = true;
-      lastCode = text;
-      lastTime = now;
-
-      handleScan(text);
     }
+
   } catch(e) {
     // ignore decode noise
   }
 
-  scheduleNext();
+  if (scanning) {
+    requestAnimationFrame(scanLoop);
+  }
 }
 
 /* =========================
-   CONTROL LOOP TICK
-========================= */
-function scheduleNext(){
-  if (!scanning) return;
-  requestAnimationFrame(scanLoop);
-}
-
-/* =========================
-   HANDLE SCAN
+   SCAN HANDLER
 ========================= */
 function handleScan(text){
-  setStatus("Scanned: " + text);
+  alert("Scanned: " + text);
 
-  if (confirm("Scanned:\n" + text)) {
-    send(text);
-  }
-
-  // unlock after safe delay (not immediate)
-  setTimeout(() => {
-    locked = false;
-  }, RESET_MS);
+  send(text);
 }
 
 /* =========================
-   SEND TO API
+   API SEND
 ========================= */
 async function send(itemId){
-  setStatus("Sending...");
-
   const url =
     API_URL +
     "?itemId=" + encodeURIComponent(itemId) +
@@ -208,45 +198,53 @@ async function send(itemId){
     const r = await fetch(url);
     const d = await r.json();
 
-    setStatus(d.success ? "✔ " + itemId : "❌ error");
+    alert(d.success ? "✔ Sent: " + itemId : "❌ Error");
   } catch(e){
-    setStatus("Network error");
+    alert("Network error");
   }
 }
 
 /* =========================
-   STOP SCANNER (FULL FIX)
+   TORCH
+========================= */
+async function toggleTorch(){
+  try {
+    if (!track) return;
+
+    const caps = track.getCapabilities?.();
+    if (!caps?.torch) {
+      alert("Torch not supported");
+      return;
+    }
+
+    torchOn = !torchOn;
+
+    await track.applyConstraints({
+      advanced: [{ torch: torchOn }]
+    });
+
+  } catch(e){
+    console.log(e);
+  }
+}
+
+/* =========================
+   STOP (FULL CLEANUP)
 ========================= */
 function stopScanner(){
-
-  // 1. STOP LOOP FIRST
   scanning = false;
 
-  // 2. STOP ZXING
-  try {
-    if (reader) {
-      reader.reset?.();
-      reader = null;
-    }
-  } catch(e){}
-
-  // 3. STOP CAMERA STREAM
   try {
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(t => t.stop());
     }
   } catch(e){}
 
-  // 4. DETACH VIDEO (CRITICAL FOR iOS)
-  video.pause?.();
-  video.srcObject = null;
+  document.getElementById("video").srcObject = null;
 
-  // 5. RESET STATE
   stream = null;
+  track = null;
   locked = false;
-  lastCode = "";
-
-  setStatus("Stopped");
 }
 </script>
 
