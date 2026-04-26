@@ -31,18 +31,26 @@ input, button {
   font-weight:700;
 }
 
-button:disabled {
-  opacity:0.5;
-}
-
 /* hidden scanner input */
 #scanInput {
   position:absolute;
   opacity:0;
-  pointer-events:none;
 }
 
-/* toast */
+/* STATUS BADGE */
+#status {
+  margin:10px auto;
+  padding:10px 14px;
+  border-radius:12px;
+  font-weight:800;
+  width:fit-content;
+}
+
+.status-ready   { background:#16a34a; }
+.status-stopped { background:#dc2626; }
+.status-sync    { background:#ca8a04; }
+
+/* TOAST */
 #toast {
   position:fixed;
   bottom:30px;
@@ -54,7 +62,6 @@ button:disabled {
   font-weight:700;
   opacity:0;
   transition:0.25s;
-  z-index:9999;
 }
 
 #toast.show { opacity:1; }
@@ -67,19 +74,15 @@ button:disabled {
   background:#111827;
   padding:8px 12px;
   border-radius:10px;
-  font-size:14px;
-  display:flex;
-  align-items:center;
-  gap:8px;
 }
 
 #syncBtn {
+  margin-left:6px;
   padding:6px 10px;
   border:none;
   border-radius:6px;
   background:#2563eb;
   color:white;
-  font-weight:700;
 }
 </style>
 </head>
@@ -88,17 +91,16 @@ button:disabled {
 
 <header>📦 External Scanner</header>
 
+<div id="status" class="status-stopped">🔴 Stopped</div>
+
 <input id="user" placeholder="User">
 <input id="po" placeholder="PO">
 <input id="qty" type="number" value="1" min="1">
 
-<button id="startBtn" disabled>Start</button>
 <button onclick="stopScanner()">Stop</button>
 
-<!-- hidden scan input -->
 <input id="scanInput" autocomplete="off">
 
-<!-- HUD -->
 <div id="hud">
   📦 <span id="queueCount">0</span>
   <button id="syncBtn" onclick="flushQueue()">Sync</button>
@@ -107,103 +109,87 @@ button:disabled {
 <div id="toast"></div>
 
 <script>
-/* =========================
-   CONFIG
-========================= */
-const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+const API_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT/exec";
 
-/* =========================
-   DOM
-========================= */
+/* DOM */
 const userEl = document.getElementById("user");
 const poEl   = document.getElementById("po");
 const qtyEl  = document.getElementById("qty");
 const scanInput = document.getElementById("scanInput");
-const startBtn = document.getElementById("startBtn");
+const statusEl = document.getElementById("status");
 
-/* =========================
-   START BUTTON GATE
-========================= */
-function updateStart(){
-  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
+/* STATUS */
+function setStatus(type, text){
+  statusEl.className = "";
+  statusEl.classList.add("status-" + type);
+  statusEl.innerText = text;
 }
-userEl.oninput = poEl.oninput = updateStart;
-updateStart();
 
-/* =========================
-   TOAST + VIBRATION
-========================= */
-function showToast(msg, type="normal"){
+/* TOAST */
+function showToast(msg){
   const t = document.getElementById("toast");
   t.innerText = msg;
-
-  t.style.background =
-    type === "error" ? "#dc2626" :
-    type === "success" ? "#16a34a" :
-    "#111827";
-
   t.classList.add("show");
-
   setTimeout(() => t.classList.remove("show"), 1500);
 
   if (navigator.vibrate) navigator.vibrate(80);
 }
 
-/* =========================
-   QUEUE
-========================= */
+/* QUEUE */
 let queue = JSON.parse(localStorage.getItem("scanQueue") || "[]");
 
 function saveQueue(){
   localStorage.setItem("scanQueue", JSON.stringify(queue));
-  updateQueueUI();
+  updateQueue();
 }
 
-function updateQueueUI(){
+function updateQueue(){
   document.getElementById("queueCount").innerText = queue.length;
 }
-updateQueueUI();
+updateQueue();
 
-/* =========================
-   SCANNER STATE
-========================= */
+/* STATE */
 let active = false;
 let sending = false;
 
-/* =========================
-   START / STOP
-========================= */
-startBtn.onclick = () => {
+/* AUTO START */
+function checkAutoStart(){
+  if (userEl.value.trim() && poEl.value.trim()) {
+    if (!active) startScanner();
+  } else {
+    stopScanner();
+  }
+}
+
+userEl.oninput = poEl.oninput = checkAutoStart;
+
+/* START */
+function startScanner(){
   active = true;
   scanInput.focus();
   flushQueue();
-  showToast("Ready to scan", "success");
-};
+  setStatus("ready", "🟢 Ready to Scan");
+}
 
+/* STOP */
 function stopScanner(){
   active = false;
   scanInput.blur();
-  showToast("Stopped");
+  setStatus("stopped", "🔴 Stopped");
 }
 
-/* =========================
-   KEEP FOCUS (important)
-========================= */
+/* KEEP FOCUS */
 setInterval(() => {
   if (active && document.activeElement !== scanInput) {
     scanInput.focus();
   }
 }, 500);
 
-/* =========================
-   CAPTURE SCAN
-========================= */
+/* SCAN */
 scanInput.addEventListener("keydown", (e) => {
   if (!active) return;
 
   if (e.key === "Enter") {
-    e.preventDefault();
-
     const value = scanInput.value.trim();
     scanInput.value = "";
 
@@ -211,24 +197,18 @@ scanInput.addEventListener("keydown", (e) => {
   }
 });
 
-/* =========================
-   HANDLE SCAN
-========================= */
+/* HANDLE */
 function handleScan(text){
-
   if (sending) return;
 
   sending = true;
   setTimeout(() => sending = false, 300);
 
   showToast("Scanned: " + text);
-
   send(text);
 }
 
-/* =========================
-   SEND (SERVER DEDUP SAFE)
-========================= */
+/* SEND */
 async function send(itemId){
 
   const payload = {
@@ -239,20 +219,20 @@ async function send(itemId){
     user: userEl.value || ""
   };
 
-  const url =
-    API_URL +
-    "?scanId=" + encodeURIComponent(payload.scanId) +
-    "&itemId=" + encodeURIComponent(payload.itemId) +
-    "&qty=" + encodeURIComponent(payload.qty) +
-    "&po=" + encodeURIComponent(payload.po) +
-    "&user=" + encodeURIComponent(payload.user);
-
   try {
-    const r = await fetch(url);
+    const r = await fetch(
+      API_URL +
+      "?scanId=" + payload.scanId +
+      "&itemId=" + itemId +
+      "&qty=" + payload.qty +
+      "&po=" + payload.po +
+      "&user=" + payload.user
+    );
+
     const d = JSON.parse(await r.text());
 
     if (d.success) {
-      showToast("✔ " + itemId + " (Remain: " + d.remaining + ")", "success");
+      showToast("✔ " + itemId);
     } else {
       throw new Error();
     }
@@ -260,35 +240,28 @@ async function send(itemId){
   } catch(e){
     queue.push(payload);
     saveQueue();
-    showToast("📦 Saved offline (" + queue.length + ")", "error");
+    showToast("Saved offline");
   }
 }
 
-/* =========================
-   SYNC
-========================= */
+/* SYNC */
 async function flushQueue(){
 
   if (!navigator.onLine || queue.length === 0) return;
 
-  const btn = document.getElementById("syncBtn");
-  btn.disabled = true;
-  btn.innerText = "Syncing...";
-
-  showToast("Syncing " + queue.length + "...");
+  setStatus("sync", "🟡 Syncing...");
 
   let remaining = [];
 
   for (const item of queue){
-
     try {
       const r = await fetch(
         API_URL +
-        "?scanId=" + encodeURIComponent(item.scanId) +
-        "&itemId=" + encodeURIComponent(item.itemId) +
-        "&qty=" + encodeURIComponent(item.qty) +
-        "&po=" + encodeURIComponent(item.po) +
-        "&user=" + encodeURIComponent(item.user)
+        "?scanId=" + item.scanId +
+        "&itemId=" + item.itemId +
+        "&qty=" + item.qty +
+        "&po=" + item.po +
+        "&user=" + item.user
       );
 
       const d = JSON.parse(await r.text());
@@ -302,19 +275,12 @@ async function flushQueue(){
   queue = remaining;
   saveQueue();
 
-  btn.disabled = false;
-  btn.innerText = "Sync";
+  setStatus("ready", "🟢 Ready to Scan");
 
-  if (queue.length === 0) {
-    showToast("✅ Sync complete", "success");
-  } else {
-    showToast("⚠ " + queue.length + " pending", "error");
-  }
+  showToast(queue.length ? "Pending remain" : "Synced");
 }
 
-/* =========================
-   AUTO SYNC
-========================= */
+/* AUTO SYNC */
 window.addEventListener("online", flushQueue);
 window.addEventListener("load", flushQueue);
 </script>
