@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Warehouse Scanner (External)</title>
+
+<style>
+body {
+  margin:0;
+  font-family:-apple-system;
+  background:#111;
+  color:white;
+  text-align:center;
+}
+
+header {
+  padding:12px;
+  font-weight:800;
+  background:#000;
+}
+
+input, button {
+  width:90%;
+  max-width:420px;
+  padding:14px;
+  margin:8px auto;
+  border-radius:10px;
+  border:none;
+  font-size:16px;
+  font-weight:700;
+}
+
+button:disabled {
+  opacity:0.5;
+}
+
+/* hidden scanner input */
+#scanInput {
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+/* toast */
+#toast {
+  position:fixed;
+  bottom:30px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#111827;
+  padding:12px 16px;
+  border-radius:10px;
+  font-weight:700;
+  opacity:0;
+  transition:0.25s;
+  z-index:9999;
+}
+
+#toast.show { opacity:1; }
+
+/* HUD */
+#hud {
+  position:fixed;
+  top:10px;
+  right:10px;
+  background:#111827;
+  padding:8px 12px;
+  border-radius:10px;
+  font-size:14px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+#syncBtn {
+  padding:6px 10px;
+  border:none;
+  border-radius:6px;
+  background:#2563eb;
+  color:white;
+  font-weight:700;
+}
+</style>
+</head>
+
+<body>
+
+<header>📦 External Scanner</header>
+
+<input id="user" placeholder="User">
+<input id="po" placeholder="PO">
+<input id="qty" type="number" value="1" min="1">
+
+<button id="startBtn" disabled>Start</button>
+<button onclick="stopScanner()">Stop</button>
+
+<!-- hidden scan input -->
+<input id="scanInput" autocomplete="off">
+
+<!-- HUD -->
+<div id="hud">
+  📦 <span id="queueCount">0</span>
+  <button id="syncBtn" onclick="flushQueue()">Sync</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =========================
+   CONFIG
+========================= */
+const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
+
+/* =========================
+   DOM
+========================= */
+const userEl = document.getElementById("user");
+const poEl   = document.getElementById("po");
+const qtyEl  = document.getElementById("qty");
+const scanInput = document.getElementById("scanInput");
+const startBtn = document.getElementById("startBtn");
+
+/* =========================
+   START BUTTON GATE
+========================= */
+function updateStart(){
+  startBtn.disabled = !(userEl.value.trim() && poEl.value.trim());
+}
+userEl.oninput = poEl.oninput = updateStart;
+updateStart();
+
+/* =========================
+   TOAST + VIBRATION
+========================= */
+function showToast(msg, type="normal"){
+  const t = document.getElementById("toast");
+  t.innerText = msg;
+
+  t.style.background =
+    type === "error" ? "#dc2626" :
+    type === "success" ? "#16a34a" :
+    "#111827";
+
+  t.classList.add("show");
+
+  setTimeout(() => t.classList.remove("show"), 1500);
+
+  if (navigator.vibrate) navigator.vibrate(80);
+}
+
+/* =========================
+   QUEUE
+========================= */
+let queue = JSON.parse(localStorage.getItem("scanQueue") || "[]");
+
+function saveQueue(){
+  localStorage.setItem("scanQueue", JSON.stringify(queue));
+  updateQueueUI();
+}
+
+function updateQueueUI(){
+  document.getElementById("queueCount").innerText = queue.length;
+}
+updateQueueUI();
+
+/* =========================
+   SCANNER STATE
+========================= */
+let active = false;
+let sending = false;
+
+/* =========================
+   START / STOP
+========================= */
+startBtn.onclick = () => {
+  active = true;
+  scanInput.focus();
+  flushQueue();
+  showToast("Ready to scan", "success");
+};
+
+function stopScanner(){
+  active = false;
+  scanInput.blur();
+  showToast("Stopped");
+}
+
+/* =========================
+   KEEP FOCUS (important)
+========================= */
+setInterval(() => {
+  if (active && document.activeElement !== scanInput) {
+    scanInput.focus();
+  }
+}, 500);
+
+/* =========================
+   CAPTURE SCAN
+========================= */
+scanInput.addEventListener("keydown", (e) => {
+  if (!active) return;
+
+  if (e.key === "Enter") {
+    e.preventDefault();
+
+    const value = scanInput.value.trim();
+    scanInput.value = "";
+
+    if (value) handleScan(value);
+  }
+});
+
+/* =========================
+   HANDLE SCAN
+========================= */
+function handleScan(text){
+
+  if (sending) return;
+
+  sending = true;
+  setTimeout(() => sending = false, 300);
+
+  showToast("Scanned: " + text);
+
+  send(text);
+}
+
+/* =========================
+   SEND (SERVER DEDUP SAFE)
+========================= */
+async function send(itemId){
+
+  const payload = {
+    scanId: crypto.randomUUID(),
+    itemId,
+    qty: qtyEl.value || 1,
+    po: poEl.value || "",
+    user: userEl.value || ""
+  };
+
+  const url =
+    API_URL +
+    "?scanId=" + encodeURIComponent(payload.scanId) +
+    "&itemId=" + encodeURIComponent(payload.itemId) +
+    "&qty=" + encodeURIComponent(payload.qty) +
+    "&po=" + encodeURIComponent(payload.po) +
+    "&user=" + encodeURIComponent(payload.user);
+
+  try {
+    const r = await fetch(url);
+    const d = JSON.parse(await r.text());
+
+    if (d.success) {
+      showToast("✔ " + itemId + " (Remain: " + d.remaining + ")", "success");
+    } else {
+      throw new Error();
+    }
+
+  } catch(e){
+    queue.push(payload);
+    saveQueue();
+    showToast("📦 Saved offline (" + queue.length + ")", "error");
+  }
+}
+
+/* =========================
+   SYNC
+========================= */
+async function flushQueue(){
+
+  if (!navigator.onLine || queue.length === 0) return;
+
+  const btn = document.getElementById("syncBtn");
+  btn.disabled = true;
+  btn.innerText = "Syncing...";
+
+  showToast("Syncing " + queue.length + "...");
+
+  let remaining = [];
+
+  for (const item of queue){
+
+    try {
+      const r = await fetch(
+        API_URL +
+        "?scanId=" + encodeURIComponent(item.scanId) +
+        "&itemId=" + encodeURIComponent(item.itemId) +
+        "&qty=" + encodeURIComponent(item.qty) +
+        "&po=" + encodeURIComponent(item.po) +
+        "&user=" + encodeURIComponent(item.user)
+      );
+
+      const d = JSON.parse(await r.text());
+      if (!d.success) throw new Error();
+
+    } catch(e){
+      remaining.push(item);
+    }
+  }
+
+  queue = remaining;
+  saveQueue();
+
+  btn.disabled = false;
+  btn.innerText = "Sync";
+
+  if (queue.length === 0) {
+    showToast("✅ Sync complete", "success");
+  } else {
+    showToast("⚠ " + queue.length + " pending", "error");
+  }
+}
+
+/* =========================
+   AUTO SYNC
+========================= */
+window.addEventListener("online", flushQueue);
+window.addEventListener("load", flushQueue);
+</script>
+
+</body>
+</html>
