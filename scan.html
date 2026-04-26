@@ -57,9 +57,24 @@ input, button {
   padding:20px; border-radius:12px;
   width:90%; max-width:360px;
 }
-.modalBtns button {
-  width:100%; margin-top:10px;
+.modalBtns button { width:100%; margin-top:10px; }
+
+/* LAST SCANS PANEL */
+#lastScans {
+  max-width:420px;
+  margin:12px auto;
+  text-align:left;
+  background:#1f2937;
+  border-radius:12px;
+  padding:10px;
 }
+
+.scanItem {
+  padding:6px 8px;
+  border-bottom:1px solid #374151;
+  font-family:monospace;
+}
+.scanItem:last-child { border-bottom:none; }
 </style>
 </head>
 
@@ -82,9 +97,15 @@ input, button {
   <button id="syncBtn" onclick="flushQueue()">Sync</button>
 </div>
 
+<!-- NEW: Last scans -->
+<div id="lastScans">
+  <b>Last 5 Scans</b>
+  <div id="scanList"></div>
+</div>
+
 <div id="toast"></div>
 
-<!-- CONFIRM MODAL -->
+<!-- MODAL -->
 <div id="modal">
   <div id="modalCard">
     <div><b>Pending scans detected</b></div>
@@ -107,6 +128,7 @@ const poEl   = document.getElementById("po");
 const qtyEl  = document.getElementById("qty");
 const scanInput = document.getElementById("scanInput");
 const statusEl = document.getElementById("status");
+const scanList = document.getElementById("scanList");
 
 /* STATUS */
 function setStatus(type, text){
@@ -137,6 +159,27 @@ function updateQueue(){
 }
 updateQueue();
 
+/* NEW: LAST SCANS STATE */
+let lastScans = JSON.parse(localStorage.getItem("lastScans") || "[]");
+
+function renderLastScans(){
+  scanList.innerHTML = "";
+  lastScans.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "scanItem";
+    div.innerText = "✔ " + item;
+    scanList.appendChild(div);
+  });
+}
+renderLastScans();
+
+function addScan(itemId){
+  lastScans.unshift(itemId);
+  if (lastScans.length > 5) lastScans.pop();
+  localStorage.setItem("lastScans", JSON.stringify(lastScans));
+  renderLastScans();
+}
+
 /* STATE */
 let active = false;
 let sending = false;
@@ -166,7 +209,7 @@ function stopScanner(){
   setStatus("stopped", "🔴 Stopped");
 }
 
-/* CLEAR (SMART) */
+/* CLEAR */
 function clearSession(){
   if (queue.length === 0) {
     doClear();
@@ -185,10 +228,8 @@ function doClear(){
   showToast("Cleared");
 }
 
-/* MODAL ACTIONS */
-function closeModal(){
-  document.getElementById("modal").style.display = "none";
-}
+/* MODAL */
+function closeModal(){ document.getElementById("modal").style.display = "none"; }
 
 async function confirmSyncThenClear(){
   closeModal();
@@ -224,8 +265,11 @@ scanInput.addEventListener("keydown", (e) => {
 /* HANDLE */
 function handleScan(text){
   if (sending) return;
+
   sending = true;
   setTimeout(() => sending = false, 300);
+
+  addScan(text); // NEW
   showToast("Scanned: " + text);
   send(text);
 }
