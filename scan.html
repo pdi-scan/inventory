@@ -6,83 +6,59 @@
 <title>Warehouse Scanner (External)</title>
 
 <style>
-body {
-  margin:0;
-  font-family:-apple-system;
-  background:#111;
-  color:white;
-  text-align:center;
-}
-
-header {
-  padding:12px;
-  font-weight:800;
-  background:#000;
-}
+body { margin:0; font-family:-apple-system; background:#111; color:white; text-align:center; }
+header { padding:12px; font-weight:800; background:#000; }
 
 input, button {
-  width:90%;
-  max-width:420px;
-  padding:14px;
-  margin:8px auto;
-  border-radius:10px;
-  border:none;
-  font-size:16px;
-  font-weight:700;
+  width:90%; max-width:420px;
+  padding:14px; margin:8px auto;
+  border-radius:10px; border:none;
+  font-size:16px; font-weight:700;
 }
 
-/* hidden scanner input */
-#scanInput {
-  position:absolute;
-  opacity:0;
-}
+#scanInput { position:absolute; opacity:0; }
 
-/* STATUS BADGE */
-#status {
-  margin:10px auto;
-  padding:10px 14px;
-  border-radius:12px;
-  font-weight:800;
-  width:fit-content;
-}
-
+/* STATUS */
+#status { margin:10px auto; padding:10px 14px; border-radius:12px; font-weight:800; width:fit-content; }
 .status-ready   { background:#16a34a; }
 .status-stopped { background:#dc2626; }
 .status-sync    { background:#ca8a04; }
 
 /* TOAST */
 #toast {
-  position:fixed;
-  bottom:30px;
-  left:50%;
+  position:fixed; bottom:30px; left:50%;
   transform:translateX(-50%);
-  background:#111827;
-  padding:12px 16px;
-  border-radius:10px;
-  font-weight:700;
-  opacity:0;
-  transition:0.25s;
+  background:#111827; padding:12px 16px;
+  border-radius:10px; font-weight:700;
+  opacity:0; transition:0.25s;
 }
-
 #toast.show { opacity:1; }
 
 /* HUD */
 #hud {
-  position:fixed;
-  top:10px;
-  right:10px;
-  background:#111827;
-  padding:8px 12px;
+  position:fixed; top:10px; right:10px;
+  background:#111827; padding:8px 12px;
   border-radius:10px;
 }
-
 #syncBtn {
-  margin-left:6px;
-  padding:6px 10px;
-  border:none;
-  border-radius:6px;
-  background:#2563eb;
-  color:white;
+  margin-left:6px; padding:6px 10px;
+  border:none; border-radius:6px;
+  background:#2563eb; color:white;
+}
+
+/* MODAL */
+#modal {
+  position:fixed; inset:0;
+  background:rgba(0,0,0,0.6);
+  display:none; align-items:center; justify-content:center;
+}
+#modalCard {
+  background:white; color:black;
+  padding:20px; border-radius:12px;
+  width:90%; max-width:360px;
+}
+.modalBtns button {
+  width:100%; margin-top:10px;
 }
 </style>
 </head>
@@ -97,7 +73,7 @@ input, button {
 <input id="po" placeholder="PO">
 <input id="qty" type="number" value="1" min="1">
 
-<button onclick="stopScanner()">Stop</button>
+<button onclick="clearSession()">Clear</button>
 
 <input id="scanInput" autocomplete="off">
 
@@ -108,8 +84,22 @@ input, button {
 
 <div id="toast"></div>
 
+<!-- CONFIRM MODAL -->
+<div id="modal">
+  <div id="modalCard">
+    <div><b>Pending scans detected</b></div>
+    <div id="modalText"></div>
+
+    <div class="modalBtns">
+      <button onclick="confirmSyncThenClear()">Sync First</button>
+      <button onclick="confirmClearAnyway()">Clear Anyway</button>
+      <button onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
-const API_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxRapCp8opT14sx21CKx-K4clBTsDtgv28WY9boNGIruSe8fBKBFekH6sGXkfocp6wK/exec";
 
 /* DOM */
 const userEl = document.getElementById("user");
@@ -131,7 +121,6 @@ function showToast(msg){
   t.innerText = msg;
   t.classList.add("show");
   setTimeout(() => t.classList.remove("show"), 1500);
-
   if (navigator.vibrate) navigator.vibrate(80);
 }
 
@@ -160,7 +149,6 @@ function checkAutoStart(){
     stopScanner();
   }
 }
-
 userEl.oninput = poEl.oninput = checkAutoStart;
 
 /* START */
@@ -178,6 +166,43 @@ function stopScanner(){
   setStatus("stopped", "🔴 Stopped");
 }
 
+/* CLEAR (SMART) */
+function clearSession(){
+  if (queue.length === 0) {
+    doClear();
+  } else {
+    document.getElementById("modalText").innerText =
+      queue.length + " scans have not synced.";
+    document.getElementById("modal").style.display = "flex";
+  }
+}
+
+function doClear(){
+  userEl.value = "";
+  poEl.value = "";
+  qtyEl.value = 1;
+  stopScanner();
+  showToast("Cleared");
+}
+
+/* MODAL ACTIONS */
+function closeModal(){
+  document.getElementById("modal").style.display = "none";
+}
+
+async function confirmSyncThenClear(){
+  closeModal();
+  await flushQueue();
+  doClear();
+}
+
+function confirmClearAnyway(){
+  closeModal();
+  queue = [];
+  saveQueue();
+  doClear();
+}
+
 /* KEEP FOCUS */
 setInterval(() => {
   if (active && document.activeElement !== scanInput) {
@@ -192,7 +217,6 @@ scanInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     const value = scanInput.value.trim();
     scanInput.value = "";
-
     if (value) handleScan(value);
   }
 });
@@ -200,17 +224,14 @@ scanInput.addEventListener("keydown", (e) => {
 /* HANDLE */
 function handleScan(text){
   if (sending) return;
-
   sending = true;
   setTimeout(() => sending = false, 300);
-
   showToast("Scanned: " + text);
   send(text);
 }
 
 /* SEND */
 async function send(itemId){
-
   const payload = {
     scanId: crypto.randomUUID(),
     itemId,
@@ -230,12 +251,9 @@ async function send(itemId){
     );
 
     const d = JSON.parse(await r.text());
-
     if (d.success) {
       showToast("✔ " + itemId);
-    } else {
-      throw new Error();
-    }
+    } else throw new Error();
 
   } catch(e){
     queue.push(payload);
@@ -276,7 +294,6 @@ async function flushQueue(){
   saveQueue();
 
   setStatus("ready", "🟢 Ready to Scan");
-
   showToast(queue.length ? "Pending remain" : "Synced");
 }
 
